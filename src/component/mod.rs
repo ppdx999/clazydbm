@@ -1,12 +1,15 @@
 use crossterm::event::KeyEvent;
-use ratatui::{Frame, layout::Rect};
+use ratatui::{layout::Rect, Frame};
 
 use crate::cmd::Update;
 
 mod root;
+mod connection;
+mod dashboard;
 
-pub use root::RootComponent;
-pub use root::RootMsg;
+pub use connection::{ConnectionComponent, ConnectionMsg};
+pub use dashboard::{DashboardComponent, DashboardMsg};
+pub use root::{RootComponent, RootMsg};
 
 pub trait Component {
     type Msg;

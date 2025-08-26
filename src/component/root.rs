@@ -1,25 +1,30 @@
-use crate::{cmd::Update, component::Component};
+use crate::cmd::{MapMsg, Update};
+use crate::component::{Component, ConnectionComponent, ConnectionMsg, DashboardComponent, DashboardMsg};
 use crossterm::event::KeyEvent;
-use ratatui::{
-    Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph},
-};
+use ratatui::{Frame, layout::Rect};
 
 pub enum RootMsg {
-    // Define messages that RootComponent can handle
+    Connection(ConnectionMsg),
+    Dashboard(DashboardMsg),
+}
+
+enum Route {
+    Connection,
+    Dashboard,
 }
 
 pub struct RootComponent {
-    // fields for RootComponent
+    route: Route,
+    connection: ConnectionComponent,
+    dashboard: DashboardComponent,
 }
 
 impl RootComponent {
     pub fn new() -> Self {
         Self {
-            // Initialize fields
+            route: Route::Connection,
+            connection: ConnectionComponent::new(),
+            dashboard: DashboardComponent::new(),
         }
     }
 }
@@ -28,55 +33,45 @@ impl Component for RootComponent {
     type Msg = RootMsg;
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
-        // handle update logic
-        Update::none()
+        match (&self.route, msg) {
+            // Handle child-intent messages that change route
+            (Route::Connection, RootMsg::Connection(ConnectionMsg::SelectConnection)) => {
+                self.route = Route::Dashboard;
+                Update::none()
+            }
+            (Route::Dashboard, RootMsg::Dashboard(DashboardMsg::Leave)) => {
+                self.route = Route::Connection;
+                Update::none()
+            }
+            // Forward other messages to the active child
+            (Route::Connection, RootMsg::Connection(m)) => {
+                self.connection.update(m).map(RootMsg::Connection)
+            }
+            (Route::Dashboard, RootMsg::Dashboard(m)) => {
+                self.dashboard.update(m).map(RootMsg::Dashboard)
+            }
+            // Messages for inactive panes are ignored for now
+            _ => Update::none(),
+        }
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
-        // handle key events
-        Update::none()
+        match self.route {
+            Route::Connection => self
+                .connection
+                .handle_key(key)
+                .map(RootMsg::Connection),
+            Route::Dashboard => self
+                .dashboard
+                .handle_key(key)
+                .map(RootMsg::Dashboard),
+        }
     }
 
-    fn draw(&mut self, f: &mut Frame, _area: Rect, _focused: bool) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(40),
-                Constraint::Percentage(20),
-                Constraint::Percentage(40),
-            ])
-            .split(f.size());
-
-        let inner = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(20),
-                Constraint::Percentage(60),
-                Constraint::Percentage(20),
-            ])
-            .split(chunks[1])[1];
-
-        let title = Span::styled(
-            "clazydbm",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
-
-        let block = Block::default().title(title).borders(Borders::ALL);
-
-        let text = Text::from(vec![
-            Line::from(Span::raw("Database Management TUI")),
-            Line::from(Span::styled(
-                "Press Ctrl-C to quit",
-                Style::default().fg(Color::Gray),
-            )),
-        ]);
-
-        let paragraph = Paragraph::new(text)
-            .block(block)
-            .alignment(Alignment::Center);
-
-        f.render_widget(paragraph, inner);
+    fn draw(&mut self, f: &mut Frame, area: Rect, focused: bool) {
+        match self.route {
+            Route::Connection => self.connection.draw(f, area, focused),
+            Route::Dashboard => self.dashboard.draw(f, area, focused),
+        }
     }
 }
