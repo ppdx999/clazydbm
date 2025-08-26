@@ -1,5 +1,7 @@
 use crate::cmd::{MapMsg, Update};
-use crate::component::{Component, ConnectionComponent, ConnectionMsg, DashboardComponent, DashboardMsg};
+use crate::component::{
+    Component, ConnectionComponent, ConnectionMsg, DashboardComponent, DashboardMsg,
+};
 use crossterm::event::KeyEvent;
 use ratatui::{Frame, layout::Rect};
 
@@ -33,25 +35,17 @@ impl Component for RootComponent {
     type Msg = RootMsg;
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
-        match (&self.route, msg) {
-            // Handle child-intent messages that change route
-            (Route::Connection, RootMsg::Connection(ConnectionMsg::SelectConnection)) => {
-                self.route = Route::Dashboard;
+        match msg {
+            RootMsg::Connection(ConnectionMsg::SelectConnection) => {
+                self.focus = Focus::Dashboard;
                 Update::none()
             }
-            (Route::Dashboard, RootMsg::Dashboard(DashboardMsg::Leave)) => {
-                self.route = Route::Connection;
+            RootMsg::Dashboard(DashboardMsg::Leave) => {
+                self.focus = Focus::Connection;
                 Update::none()
             }
-            // Forward other messages to the active child
-            (Route::Connection, RootMsg::Connection(m)) => {
-                self.connection.update(m).map(RootMsg::Connection)
-            }
-            (Route::Dashboard, RootMsg::Dashboard(m)) => {
-                self.dashboard.update(m).map(RootMsg::Dashboard)
-            }
-            // Messages for inactive panes are ignored for now
-            _ => Update::none(),
+            RootMsg::Connection(m) => self.connection.update(m).map(RootMsg::Connection),
+            RootMsg::Dashboard(m) => self.dashboard.update(m).map(RootMsg::Dashboard),
         }
     }
 
