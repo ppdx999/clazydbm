@@ -8,13 +8,13 @@ pub enum RootMsg {
     Dashboard(DashboardMsg),
 }
 
-enum Route {
+enum Focus {
     Connection,
     Dashboard,
 }
 
 pub struct RootComponent {
-    route: Route,
+    focus: Focus,
     connection: ConnectionComponent,
     dashboard: DashboardComponent,
 }
@@ -22,7 +22,7 @@ pub struct RootComponent {
 impl RootComponent {
     pub fn new() -> Self {
         Self {
-            route: Route::Connection,
+            focus: Focus::Connection,
             connection: ConnectionComponent::new(),
             dashboard: DashboardComponent::new(),
         }
@@ -56,22 +56,16 @@ impl Component for RootComponent {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
-        match self.route {
-            Route::Connection => self
-                .connection
-                .handle_key(key)
-                .map(RootMsg::Connection),
-            Route::Dashboard => self
-                .dashboard
-                .handle_key(key)
-                .map(RootMsg::Dashboard),
+        match self.focus {
+            Focus::Connection => self.connection.handle_key(key).map(RootMsg::Connection),
+            Focus::Dashboard => self.dashboard.handle_key(key).map(RootMsg::Dashboard),
         }
     }
 
     fn draw(&mut self, f: &mut Frame, area: Rect, focused: bool) {
-        match self.route {
-            Route::Connection => self.connection.draw(f, area, focused),
-            Route::Dashboard => self.dashboard.draw(f, area, focused),
+        match self.focus {
+            Focus::Connection => self.connection.draw(f, area, focused),
+            Focus::Dashboard => self.dashboard.draw(f, area, focused),
         }
     }
 }
