@@ -56,21 +56,17 @@ impl<B: Backend> App<B> {
             return Ok(());
         }
 
-        match event::read()? {
-            Event::Key(key)
-                if key.code == KeyCode::Char('c')
-                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
-            {
-                self.should_quit = true;
-            }
+        let Event::Key(key) = event::read()? else {
+            return Ok(());
+        };
 
-            Event::Key(key) => {
-                let cmd = self.root.handle_key(key).map(AppMsg::Root).cmd;
-                self.run_command(cmd);
-            }
-
-            _ => {}
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.should_quit = true;
+            return Ok(());
         }
+
+        let cmd = self.root.handle_key(key).map(AppMsg::Root).cmd;
+        self.run_command(cmd);
 
         Ok(())
     }
