@@ -1,14 +1,14 @@
 use crossterm::event::KeyEvent;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
-use crate::cmd::Update;
 use super::Component;
+use crate::cmd::Update;
 
 /// Messages the Dashboard component can emit
 pub enum DashboardMsg {
@@ -61,7 +61,9 @@ impl Component for DashboardComponent {
 
         let title = Span::styled(
             "Dashboard",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         );
         let block = Block::default().title(title).borders(Borders::ALL);
 
@@ -80,4 +82,3 @@ impl Component for DashboardComponent {
         f.render_widget(paragraph, inner);
     }
 }
-
