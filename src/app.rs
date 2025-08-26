@@ -2,6 +2,7 @@ use crate::cmd::Command;
 use crate::cmd::MapMsg;
 use crate::cmd::Update;
 use crate::component::{Component, RootComponent, RootMsg};
+use crate::component::ConnectionMsg;
 use crossterm::event::KeyModifiers;
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::Terminal;
@@ -27,13 +28,18 @@ pub struct App<B: Backend> {
 impl<B: Backend> App<B> {
     pub fn new(term: Terminal<B>) -> Self {
         let (tx, rx) = std::sync::mpsc::channel();
-        Self {
+        let mut this = Self {
             term,
             root: RootComponent::new(),
             rx,
             tx,
             should_quit: false,
-        }
+        };
+        // Kick off initial loading (e.g., connections)
+        let _ = this
+            .tx
+            .send(AppMsg::Root(RootMsg::Connection(ConnectionMsg::Load)));
+        this
     }
 
     pub fn run(&mut self) -> Result<()> {
