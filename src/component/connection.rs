@@ -1,14 +1,14 @@
 use crossterm::event::KeyEvent;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
-use crate::cmd::Update;
 use super::Component;
+use crate::cmd::Update;
 
 /// Messages the Connection component can emit
 pub enum ConnectionMsg {
@@ -61,7 +61,9 @@ impl Component for ConnectionComponent {
 
         let title = Span::styled(
             "Connection",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         );
         let block = Block::default().title(title).borders(Borders::ALL);
 
@@ -80,4 +82,3 @@ impl Component for ConnectionComponent {
         f.render_widget(paragraph, inner);
     }
 }
-
