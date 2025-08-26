@@ -1,5 +1,6 @@
 use crate::cmd::Command;
 use crate::cmd::MapMsg;
+use crate::cmd::Update;
 use crate::component::{Component, RootComponent, RootMsg};
 use crossterm::event::KeyModifiers;
 use crossterm::event::{self, Event, KeyCode};
@@ -65,10 +66,19 @@ impl<B: Backend> App<B> {
             return Ok(());
         }
 
-        let cmd = self.root.handle_key(key).map(AppMsg::Root).cmd;
-        self.run_command(cmd);
+        let u = self.root.handle_key(key).map(AppMsg::Root);
+        self.handle_update(u);
 
         Ok(())
+    }
+
+    fn handle_update(&mut self, update: Update<AppMsg>) {
+        if let Some(msg) = update.msg {
+            if let Some(cmd) = self.apply(msg) {
+                self.run_command(cmd);
+            }
+        }
+        self.run_command(update.cmd);
     }
 
     fn handle_messages(&mut self) {
