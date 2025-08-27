@@ -58,9 +58,11 @@ impl Component for ConnectionComponent {
     fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
         use crossterm::event::KeyCode::*;
         match key.code {
-            Enter => Update::msg(ConnectionMsg::ConnectionSelected(
-                self.selected_connection().unwrap().clone(),
-            )),
+            Enter => match self.selected_connection() {
+                Some(conn) => Update::msg(ConnectionMsg::ConnectionSelected(conn.clone())),
+                // TODO: Set error state to show in UI
+                None => Update::none(),
+            },
             Up | Char('k') => Update::msg(ConnectionMsg::MoveUp),
             Down | Char('j') => Update::msg(ConnectionMsg::MoveDown),
             _ => Update::none(),
