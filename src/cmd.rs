@@ -25,15 +25,6 @@ impl Command {
     }
 }
 
-impl From<Command> for Option<Command> {
-    fn from(value: Command) -> Self {
-        match value {
-            Command::None => None,
-            other => Some(other),
-        }
-    }
-}
-
 pub struct Update<T> {
     pub msg: Option<T>,
     pub cmd: Command,
