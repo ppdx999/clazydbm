@@ -128,3 +128,190 @@ impl Component for ConnectionComponent {
         f.render_stateful_widget(list, inner, &mut state);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::DatabaseType;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn create_test_connection(name: &str, db_type: DatabaseType) -> Connection {
+        Connection {
+            r#type: db_type,
+            name: Some(name.to_string()),
+            user: Some("testuser".to_string()),
+            host: Some("localhost".to_string()),
+            port: Some(5432),
+            path: None,
+            password: Some("password".to_string()),
+            database: Some("testdb".to_string()),
+        }
+    }
+
+    fn create_component_with_connections(connections: Vec<Connection>) -> ConnectionComponent {
+        ConnectionComponent {
+            items: connections,
+            selected: 0,
+        }
+    }
+
+    #[test]
+    fn test_empty_component() {
+        let component = create_component_with_connections(vec![]);
+        assert_eq!(component.items.len(), 0);
+        assert_eq!(component.selected, 0);
+        assert!(component.selected_connection().is_none());
+    }
+
+    #[test]
+    fn test_component_with_connections() {
+        let connections = vec![
+            create_test_connection("Test DB 1", DatabaseType::Postgres),
+            create_test_connection("Test DB 2", DatabaseType::MySql),
+        ];
+        let component = create_component_with_connections(connections);
+        
+        assert_eq!(component.items.len(), 2);
+        assert_eq!(component.selected, 0);
+        assert!(component.selected_connection().is_some());
+        assert_eq!(component.selected_connection().unwrap().name.as_ref().unwrap(), "Test DB 1");
+    }
+
+    #[test]
+    fn test_move_up() {
+        let connections = vec![
+            create_test_connection("DB 1", DatabaseType::Postgres),
+            create_test_connection("DB 2", DatabaseType::MySql),
+            create_test_connection("DB 3", DatabaseType::Sqlite),
+        ];
+        let mut component = create_component_with_connections(connections);
+        component.selected = 2;
+
+        let update = component.update(ConnectionMsg::MoveUp);
+        assert_eq!(component.selected, 1);
+        assert!(update.msg.is_none());
+        assert!(matches!(update.cmd, crate::cmd::Command::None));
+    }
+
+    #[test]
+    fn test_move_up_at_beginning() {
+        let connections = vec![
+            create_test_connection("DB 1", DatabaseType::Postgres),
+            create_test_connection("DB 2", DatabaseType::MySql),
+        ];
+        let mut component = create_component_with_connections(connections);
+        component.selected = 0;
+
+        let _update = component.update(ConnectionMsg::MoveUp);
+        assert_eq!(component.selected, 0); // Should stay at 0
+    }
+
+    #[test]
+    fn test_move_down() {
+        let connections = vec![
+            create_test_connection("DB 1", DatabaseType::Postgres),
+            create_test_connection("DB 2", DatabaseType::MySql),
+            create_test_connection("DB 3", DatabaseType::Sqlite),
+        ];
+        let mut component = create_component_with_connections(connections);
+        component.selected = 0;
+
+        let update = component.update(ConnectionMsg::MoveDown);
+        assert_eq!(component.selected, 1);
+        assert!(update.msg.is_none());
+    }
+
+    #[test]
+    fn test_move_down_at_end() {
+        let connections = vec![
+            create_test_connection("DB 1", DatabaseType::Postgres),
+            create_test_connection("DB 2", DatabaseType::MySql),
+        ];
+        let mut component = create_component_with_connections(connections);
+        component.selected = 1;
+
+        let _update = component.update(ConnectionMsg::MoveDown);
+        assert_eq!(component.selected, 1); // Should stay at 1
+    }
+
+    #[test]
+    fn test_move_empty_list() {
+        let mut component = create_component_with_connections(vec![]);
+
+        let _update = component.update(ConnectionMsg::MoveUp);
+        assert_eq!(component.selected, 0);
+
+        let _update = component.update(ConnectionMsg::MoveDown);
+        assert_eq!(component.selected, 0);
+    }
+
+    #[test]
+    fn test_handle_key_enter_with_connection() {
+        let connections = vec![
+            create_test_connection("Test DB", DatabaseType::Postgres),
+        ];
+        let mut component = create_component_with_connections(connections);
+
+        let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let update = component.handle_key(key);
+
+        assert!(update.msg.is_some());
+        if let Some(ConnectionMsg::ConnectionSelected(conn)) = update.msg {
+            assert_eq!(conn.name.as_ref().unwrap(), "Test DB");
+        } else {
+            panic!("Expected ConnectionSelected message");
+        }
+    }
+
+    #[test]
+    fn test_handle_key_enter_empty_list() {
+        let mut component = create_component_with_connections(vec![]);
+
+        let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let update = component.handle_key(key);
+
+        assert!(update.msg.is_none());
+    }
+
+    #[test]
+    fn test_handle_key_movement() {
+        let connections = vec![
+            create_test_connection("DB 1", DatabaseType::Postgres),
+            create_test_connection("DB 2", DatabaseType::MySql),
+        ];
+        let mut component = create_component_with_connections(connections);
+
+        // Test Up key
+        let key = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
+        let update = component.handle_key(key);
+        assert!(matches!(update.msg, Some(ConnectionMsg::MoveUp)));
+
+        // Test 'k' key
+        let key = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE);
+        let update = component.handle_key(key);
+        assert!(matches!(update.msg, Some(ConnectionMsg::MoveUp)));
+
+        // Test Down key
+        let key = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+        let update = component.handle_key(key);
+        assert!(matches!(update.msg, Some(ConnectionMsg::MoveDown)));
+
+        // Test 'j' key
+        let key = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        let update = component.handle_key(key);
+        assert!(matches!(update.msg, Some(ConnectionMsg::MoveDown)));
+    }
+
+    #[test]
+    fn test_handle_key_ignored() {
+        let connections = vec![
+            create_test_connection("DB 1", DatabaseType::Postgres),
+        ];
+        let mut component = create_component_with_connections(connections);
+
+        // Test ignored key
+        let key = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+        let update = component.handle_key(key);
+        assert!(update.msg.is_none());
+    }
+}
