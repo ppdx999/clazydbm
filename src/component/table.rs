@@ -151,8 +151,10 @@ impl Component for TableComponent {
                         .borders(Borders::ALL)
                         .border_style(content_style);
 
-                    let sql_content = Paragraph::new("SQL view - Not implemented yet\n\nWrite and execute SQL queries here.")
-                        .block(sql_block);
+                    let sql_content = Paragraph::new(
+                        "SQL view - Not implemented yet\n\nWrite and execute SQL queries here.",
+                    )
+                    .block(sql_block);
 
                     f.render_widget(sql_content, content_area);
                 }
@@ -175,8 +177,10 @@ impl Component for TableComponent {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::White));
 
-            let content = Paragraph::new("No table selected\n\nSelect a table from the database structure on the left.")
-                .block(block);
+            let content = Paragraph::new(
+                "No table selected\n\nSelect a table from the database structure on the left.",
+            )
+            .block(block);
 
             f.render_widget(content, area);
         }
