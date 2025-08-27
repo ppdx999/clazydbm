@@ -2,12 +2,32 @@ use crate::cmd::{MapMsg, Update};
 use crate::component::{
     Component, ConnectionComponent, ConnectionMsg, DashboardComponent, DashboardMsg,
 };
+use crate::connection::Connection;
 use crossterm::event::KeyEvent;
 use ratatui::{Frame, layout::Rect};
 
 pub enum RootMsg {
+    ConnectionSelected(Connection),
+    LeaveDashboard,
     Connection(ConnectionMsg),
     Dashboard(DashboardMsg),
+}
+
+impl From<ConnectionMsg> for RootMsg {
+    fn from(msg: ConnectionMsg) -> Self {
+        match msg {
+            ConnectionMsg::ConnectionSelected(conn) => RootMsg::ConnectionSelected(conn),
+            m => RootMsg::Connection(m),
+        }
+    }
+}
+impl From<DashboardMsg> for RootMsg {
+    fn from(msg: DashboardMsg) -> Self {
+        match msg {
+            DashboardMsg::Leave => RootMsg::LeaveDashboard,
+            m => RootMsg::Dashboard(m),
+        }
+    }
 }
 
 enum Focus {
@@ -36,16 +56,16 @@ impl Component for RootComponent {
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
         match msg {
-            RootMsg::Connection(ConnectionMsg::ConnectionSelected(_conn)) => {
+            RootMsg::ConnectionSelected(_conn) => {
                 self.focus = Focus::Dashboard;
                 Update::none()
             }
-            RootMsg::Dashboard(DashboardMsg::Leave) => {
+            RootMsg::LeaveDashboard => {
                 self.focus = Focus::Connection;
                 Update::none()
             }
-            RootMsg::Connection(m) => self.connection.update(m).map(RootMsg::Connection),
-            RootMsg::Dashboard(m) => self.dashboard.update(m).map(RootMsg::Dashboard),
+            RootMsg::Connection(m) => self.connection.update(m).map(RootMsg::from),
+            RootMsg::Dashboard(m) => self.dashboard.update(m).map(RootMsg::from),
         }
     }
 
