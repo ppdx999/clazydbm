@@ -1,42 +1,36 @@
 use crossterm::event::KeyEvent;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Span,
     widgets::{Block, Borders, List, ListItem, ListState},
-    Frame,
 };
 
 use super::Component;
-use crate::app::AppMsg;
-use crate::cmd::{Command, Update};
-use crate::component::RootMsg;
-use crate::config::{self, ConnectionConfig};
+use crate::{cmd::Update, db::DBBehavior};
+use crate::{connection::Connection, connection::load_connections, db::DB};
 
-/// Messages the Connection component can emit
 pub enum ConnectionMsg {
-    /// Internal: trigger async load of connections from config
-    Load,
-    /// Connections loaded (Ok or error string)
-    Loaded(Result<Vec<ConnectionConfig>, String>),
-    /// User selected a connection
-    SelectConnection,
-    /// Move selection
+    ConnectionSelected(Connection),
     MoveUp,
     MoveDown,
 }
 
 pub struct ConnectionComponent {
-    items: Vec<ConnectionConfig>,
+    items: Vec<Connection>,
     selected: usize,
 }
 
 impl ConnectionComponent {
     pub fn new() -> Self {
         Self {
-            items: Vec::new(),
+            items: load_connections().unwrap(),
             selected: 0,
         }
+    }
+    fn selected_connection(&self) -> Option<&Connection> {
+        self.items.get(self.selected)
     }
 }
 
@@ -45,25 +39,6 @@ impl Component for ConnectionComponent {
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
         match msg {
-            ConnectionMsg::Load => {
-                // Spawn loader task to read config file
-                let task = |tx: std::sync::mpsc::Sender<AppMsg>| {
-                    let res = config::load_connections().map_err(|e| e.to_string());
-                    let _ = tx.send(AppMsg::Root(RootMsg::Connection(
-                        ConnectionMsg::Loaded(res),
-                    )));
-                };
-                Update::cmd(Command::Spawn(Box::new(task)))
-            }
-            ConnectionMsg::Loaded(Ok(items)) => {
-                self.items = items;
-                self.selected = 0;
-                Update::none()
-            }
-            ConnectionMsg::Loaded(Err(_err)) => {
-                // Keep empty list; TODO: surface error in UI
-                Update::none()
-            }
             ConnectionMsg::MoveUp => {
                 if !self.items.is_empty() {
                     self.selected = self.selected.saturating_sub(1);
@@ -76,14 +51,16 @@ impl Component for ConnectionComponent {
                 }
                 Update::none()
             }
-            ConnectionMsg::SelectConnection => Update::msg(ConnectionMsg::SelectConnection),
+            _ => Update::none(),
         }
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
         use crossterm::event::KeyCode::*;
         match key.code {
-            Enter => Update::msg(ConnectionMsg::SelectConnection),
+            Enter => Update::msg(ConnectionMsg::ConnectionSelected(
+                self.selected_connection().unwrap().clone(),
+            )),
             Up | Char('k') => Update::msg(ConnectionMsg::MoveUp),
             Down | Char('j') => Update::msg(ConnectionMsg::MoveDown),
             _ => Update::none(),
@@ -111,7 +88,9 @@ impl Component for ConnectionComponent {
 
         let title = Span::styled(
             "Connections",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         );
         let block = Block::default().title(title).borders(Borders::ALL);
 
@@ -120,13 +99,23 @@ impl Component for ConnectionComponent {
         } else {
             self.items
                 .iter()
-                .map(|c| ListItem::new(c.name.clone()))
+                .map(|c| {
+                    ListItem::new(Span::raw(format!(
+                        "{} ({})",
+                        c.name.clone().unwrap_or("unknown".to_string()),
+                        DB::database_url(c).unwrap_or("invalid config".to_string())
+                    )))
+                })
                 .collect()
         };
 
         let list = List::new(items)
             .block(block)
-            .highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .highlight_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .highlight_symbol("▶ ");
 
         let mut state = ListState::default();

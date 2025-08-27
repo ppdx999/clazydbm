@@ -36,7 +36,7 @@ impl Component for RootComponent {
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
         match msg {
-            RootMsg::Connection(ConnectionMsg::SelectConnection) => {
+            RootMsg::Connection(ConnectionMsg::ConnectionSelected(_conn)) => {
                 self.focus = Focus::Dashboard;
                 Update::none()
             }
