@@ -46,16 +46,38 @@ impl<T> Update<T> {
             cmd: Command::None,
         }
     }
+    pub fn with_cmd(cmd: Command) -> Self {
+        Self { msg: None, cmd }
+    }
+    pub fn msg_cmd(msg: T, cmd: Command) -> Self {
+        Self {
+            msg: Some(msg),
+            cmd,
+        }
+    }
 }
 
 pub trait MapMsg<M> {
     fn map<ParentMsg>(self, wrap: impl FnOnce(M) -> ParentMsg) -> Update<ParentMsg>;
+    fn map_auto<ParentMsg>(self) -> Update<ParentMsg>
+    where
+        ParentMsg: From<M>;
 }
 
 impl<M> MapMsg<M> for Update<M> {
     fn map<ParentMsg>(self, wrap: impl FnOnce(M) -> ParentMsg) -> Update<ParentMsg> {
         Update {
             msg: self.msg.map(wrap),
+            cmd: self.cmd,
+        }
+    }
+
+    fn map_auto<ParentMsg>(self) -> Update<ParentMsg>
+    where
+        ParentMsg: From<M>,
+    {
+        Update {
+            msg: self.msg.map(ParentMsg::from),
             cmd: self.cmd,
         }
     }
