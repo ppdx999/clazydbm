@@ -6,10 +6,14 @@ use crate::cmd::Update;
 mod root;
 mod connection;
 mod dashboard;
+mod dblist;
+mod table;
 
 pub use connection::{ConnectionComponent, ConnectionMsg};
 pub use dashboard::{DashboardComponent, DashboardMsg};
+pub use dblist::{DBListComponent, DBListMsg};
 pub use root::{RootComponent, RootMsg};
+pub use table::{TableComponent, TableMsg};
 
 pub trait Component {
     type Msg;
