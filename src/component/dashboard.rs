@@ -5,7 +5,10 @@ use ratatui::{
 };
 
 use super::{Component, DBListComponent, DBListMsg, TableComponent, TableMsg};
-use crate::{cmd::MapMsg, cmd::Update, connection::Connection};
+use crate::{
+    cmd::{MapMsg, Update},
+    connection::Connection,
+};
 
 /// Messages the Dashboard component can emit
 pub enum DashboardMsg {
@@ -28,6 +31,7 @@ impl From<DBListMsg> for DashboardMsg {
             DBListMsg::SelectTable { database, table } => {
                 DashboardMsg::SelectTable { database, table }
             }
+            DBListMsg::LeaveDashboard => DashboardMsg::Leave,
             m => DashboardMsg::DBListMsg(m),
         }
     }
@@ -94,11 +98,6 @@ impl Component for DashboardComponent {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
-        // Global keys
-        if key.code == crossterm::event::KeyCode::Esc {
-            return Update::msg(DashboardMsg::Leave);
-        }
-
         // Forward key to focused component - let update handle side effects
         match self.focus {
             DashboardFocus::DBList => self.dblist.handle_key(key).map_auto(),

@@ -57,6 +57,7 @@ pub struct Table {
 }
 
 pub enum DBListMsg {
+    LeaveDashboard,
     MoveUp,
     MoveDown,
     MoveTop,
@@ -318,6 +319,7 @@ impl Component for DBListComponent {
                 Right | Char('l') => Update::msg(DBListMsg::Expand),
                 Left | Char('h') => Update::msg(DBListMsg::Fold),
                 Char('/') => Update::msg(DBListMsg::Filter),
+                Esc => Update::msg(DBListMsg::LeaveDashboard),
                 Enter => {
                     if let Some(node) = self.selected_node() {
                         match &node.node_type {

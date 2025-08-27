@@ -81,7 +81,7 @@ impl Component for TableComponent {
             Char('2') => Update::msg(TableMsg::FocusSQL),
             Char('3') => Update::msg(TableMsg::FocusProperties),
             // Back to DBList focus
-            Esc => Update::msg(TableMsg::BackToDBList),
+            Tab | Esc => Update::msg(TableMsg::BackToDBList),
             _ => Update::none(),
         }
     }
