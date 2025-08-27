@@ -49,6 +49,14 @@ impl RootComponent {
             dashboard: DashboardComponent::new(),
         }
     }
+    fn move_to_dashboard(&mut self, _conn: Connection) -> Update<RootMsg> {
+        self.focus = Focus::Dashboard;
+        Update::none()
+    }
+    fn move_to_connection(&mut self) -> Update<RootMsg> {
+        self.focus = Focus::Connection;
+        Update::none()
+    }
 }
 
 impl Component for RootComponent {
@@ -56,23 +64,17 @@ impl Component for RootComponent {
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
         match msg {
-            RootMsg::ConnectionSelected(_conn) => {
-                self.focus = Focus::Dashboard;
-                Update::none()
-            }
-            RootMsg::LeaveDashboard => {
-                self.focus = Focus::Connection;
-                Update::none()
-            }
-            RootMsg::Connection(m) => self.connection.update(m).map(RootMsg::from),
-            RootMsg::Dashboard(m) => self.dashboard.update(m).map(RootMsg::from),
+            RootMsg::ConnectionSelected(conn) => self.move_to_dashboard(conn),
+            RootMsg::LeaveDashboard => self.move_to_connection(),
+            RootMsg::Connection(m) => self.connection.update(m).map_auto(),
+            RootMsg::Dashboard(m) => self.dashboard.update(m).map_auto(),
         }
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
         match self.focus {
-            Focus::Connection => self.connection.handle_key(key).map(RootMsg::Connection),
-            Focus::Dashboard => self.dashboard.handle_key(key).map(RootMsg::Dashboard),
+            Focus::Connection => self.connection.handle_key(key).map_auto(),
+            Focus::Dashboard => self.dashboard.handle_key(key).map_auto(),
         }
     }
 

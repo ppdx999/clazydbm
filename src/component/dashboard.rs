@@ -1,84 +1,127 @@
 use crossterm::event::KeyEvent;
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph},
+    layout::{Constraint, Direction, Layout, Rect},
 };
 
-use super::Component;
-use crate::cmd::Update;
+use super::{Component, DBListComponent, DBListMsg, TableComponent, TableMsg};
+use crate::{cmd::MapMsg, cmd::Update, connection::Connection};
 
 /// Messages the Dashboard component can emit
 pub enum DashboardMsg {
     /// Request to leave dashboard back to Connection
     Leave,
+    /// DBList wants to select a table
+    SelectTable {
+        database: String,
+        table: String,
+    },
+    /// Table wants to go back to DBList focus
+    BackToDBList,
+    DBListMsg(DBListMsg),
+    TableMsg(TableMsg),
 }
 
-pub struct DashboardComponent;
+impl From<DBListMsg> for DashboardMsg {
+    fn from(msg: DBListMsg) -> Self {
+        match msg {
+            DBListMsg::SelectTable { database, table } => {
+                DashboardMsg::SelectTable { database, table }
+            }
+            m => DashboardMsg::DBListMsg(m),
+        }
+    }
+}
+impl From<TableMsg> for DashboardMsg {
+    fn from(msg: TableMsg) -> Self {
+        match msg {
+            TableMsg::BackToDBList => DashboardMsg::BackToDBList,
+            m => DashboardMsg::TableMsg(m),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DashboardFocus {
+    DBList,
+    Table,
+}
+
+pub struct DashboardComponent {
+    dblist: DBListComponent,
+    table: TableComponent,
+    focus: DashboardFocus,
+    connection: Option<Connection>,
+}
 
 impl DashboardComponent {
     pub fn new() -> Self {
-        Self
+        Self {
+            dblist: DBListComponent::new(),
+            table: TableComponent::new(),
+            focus: DashboardFocus::DBList,
+            connection: None,
+        }
+    }
+
+    pub fn set_connection(&mut self, conn: Connection) {
+        self.connection = Some(conn.clone());
+    }
+
+    fn move_to_table(&mut self, database: String, table: String) -> Update<DashboardMsg> {
+        self.table.set_table(database, table);
+        self.focus = DashboardFocus::Table;
+        Update::none()
+    }
+
+    fn move_to_dblist(&mut self) -> Update<DashboardMsg> {
+        self.focus = DashboardFocus::DBList;
+        Update::none()
     }
 }
 
 impl Component for DashboardComponent {
     type Msg = DashboardMsg;
 
-    fn update(&mut self, _msg: Self::Msg) -> Update<Self::Msg> {
-        // No internal state yet
-        Update::none()
+    fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
+        match msg {
+            DashboardMsg::SelectTable { database, table } => self.move_to_table(database, table),
+            DashboardMsg::BackToDBList => self.move_to_dblist(),
+            DashboardMsg::Leave => Update::msg(DashboardMsg::Leave),
+            DashboardMsg::DBListMsg(m) => self.dblist.update(m).map_auto(),
+            DashboardMsg::TableMsg(m) => self.table.update(m).map_auto(),
+        }
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
-        // Esc returns to Connection via Root
+        // Global keys
         if key.code == crossterm::event::KeyCode::Esc {
             return Update::msg(DashboardMsg::Leave);
         }
-        Update::none()
+
+        // Forward key to focused component - let update handle side effects
+        match self.focus {
+            DashboardFocus::DBList => self.dblist.handle_key(key).map_auto(),
+            DashboardFocus::Table => self.table.handle_key(key).map_auto(),
+        }
     }
 
-    fn draw(&mut self, f: &mut Frame, area: Rect, _focused: bool) {
+    fn draw(&mut self, f: &mut Frame, area: Rect, focused: bool) {
+        // Create layout: 15% left (DBList), 85% right (Table)
         let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(40),
-                Constraint::Percentage(20),
-                Constraint::Percentage(40),
-            ])
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
             .split(area);
 
-        let inner = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(20),
-                Constraint::Percentage(60),
-                Constraint::Percentage(20),
-            ])
-            .split(chunks[1])[1];
+        let dblist_area = chunks[0];
+        let table_area = chunks[1];
 
-        let title = Span::styled(
-            "Dashboard",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
-        let block = Block::default().title(title).borders(Borders::ALL);
+        // Draw DBList
+        let dblist_focused = focused && matches!(self.focus, DashboardFocus::DBList);
+        self.dblist.draw(f, dblist_area, dblist_focused);
 
-        let text = Text::from(vec![
-            Line::from(Span::raw("Dashboard skeleton")),
-            Line::from(Span::styled(
-                "Press Esc to return to Connection",
-                Style::default().fg(Color::Gray),
-            )),
-        ]);
-
-        let paragraph = Paragraph::new(text)
-            .block(block)
-            .alignment(Alignment::Center);
-
-        f.render_widget(paragraph, inner);
+        // Draw Table
+        let table_focused = focused && matches!(self.focus, DashboardFocus::Table);
+        self.table.draw(f, table_area, table_focused);
     }
 }
