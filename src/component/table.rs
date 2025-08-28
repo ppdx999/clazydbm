@@ -7,7 +7,11 @@ use ratatui::{
 };
 
 use super::Component;
-use crate::cmd::Update;
+use crate::app::AppMsg;
+use crate::cmd::{Command, Update};
+use crate::connection::Connection;
+use crate::db::{DB, DBBehavior, Records};
+use crate::logger::{debug, error};
 
 #[derive(Debug, Clone)]
 pub struct TableInfo {
@@ -20,6 +24,9 @@ pub enum TableMsg {
     FocusSQL,
     FocusProperties,
     BackToDBList,
+    LoadRecords(Connection),
+    RecordsLoaded(Records),
+    RecordsLoadFailed(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -32,6 +39,7 @@ pub enum TableFocus {
 pub struct TableComponent {
     table_info: Option<TableInfo>,
     focus: TableFocus,
+    records: Option<Records>,
 }
 
 impl TableComponent {
@@ -39,6 +47,7 @@ impl TableComponent {
         Self {
             table_info: None,
             focus: TableFocus::Records,
+            records: None,
         }
     }
 
@@ -69,6 +78,39 @@ impl Component for TableComponent {
                 Update::none()
             }
             TableMsg::BackToDBList => Update::msg(TableMsg::BackToDBList),
+            TableMsg::LoadRecords(conn) => {
+                let Some(info) = self.table_info.clone() else { return Update::none(); };
+                debug(&format!("Table: loading {}.{}", info.database, info.table));
+                let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
+                    let res = DB::fetch_records(&conn, &info.database, &info.table, 200, 0);
+                    let msg = match res {
+                        Ok(recs) => AppMsg::Root(
+                            crate::component::RootMsg::Dashboard(
+                                crate::component::DashboardMsg::TableMsg(
+                                    TableMsg::RecordsLoaded(recs),
+                                ),
+                            ),
+                        ),
+                        Err(e) => {
+                            error(&format!("Table: load failed: {}", e));
+                            AppMsg::Root(
+                                crate::component::RootMsg::Dashboard(
+                                    crate::component::DashboardMsg::TableMsg(
+                                        TableMsg::RecordsLoadFailed(e.to_string()),
+                                    ),
+                                ),
+                            )
+                        }
+                    };
+                    let _ = tx.send(msg);
+                };
+                Update::cmd(Command::Spawn(Box::new(task)))
+            }
+            TableMsg::RecordsLoaded(recs) => {
+                self.records = Some(recs);
+                Update::none()
+            }
+            TableMsg::RecordsLoadFailed(_e) => Update::none(),
         }
     }
 
@@ -135,15 +177,31 @@ impl Component for TableComponent {
 
             match self.focus {
                 TableFocus::Records => {
-                    let records_block = Block::default()
-                        .title("Records")
-                        .borders(Borders::ALL)
-                        .border_style(content_style);
-
-                    let records_content = Paragraph::new("Records view - Not implemented yet\n\nPress:\n- j/k: Navigate rows\n- h/l: Navigate columns\n- /: Filter records")
-                        .block(records_block);
-
-                    f.render_widget(records_content, content_area);
+                    if let Some(recs) = &self.records {
+                        use ratatui::widgets::{Row, Table as TuiTable, Cell as TuiCell};
+                        let header = Row::new(
+                            recs.columns.iter().map(|c| TuiCell::from(c.as_str()).style(Style::default().add_modifier(Modifier::BOLD)))
+                        );
+                        let rows = recs.rows.iter().map(|r| Row::new(r.iter().map(|v| v.as_str())));
+                        let widths: Vec<Constraint> = recs.columns.iter().map(|_| Constraint::Length(20)).collect();
+                        let table = TuiTable::new(rows, widths)
+                            .header(header)
+                            .block(
+                                Block::default()
+                                    .title("Records")
+                                    .borders(Borders::ALL)
+                                    .border_style(content_style),
+                            )
+                            ;
+                        f.render_widget(table, content_area);
+                    } else {
+                        let records_block = Block::default()
+                            .title("Records")
+                            .borders(Borders::ALL)
+                            .border_style(content_style);
+                        let records_content = Paragraph::new("Loading records...").block(records_block);
+                        f.render_widget(records_content, content_area);
+                    }
                 }
                 TableFocus::SQL => {
                     let sql_block = Block::default()

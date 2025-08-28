@@ -75,7 +75,12 @@ impl DashboardComponent {
     fn move_to_table(&mut self, database: String, table: String) -> Update<DashboardMsg> {
         self.table.set_table(database, table);
         self.focus = DashboardFocus::Table;
-        Update::none()
+        // Trigger records load using current connection
+        if let Some(conn) = &self.connection {
+            Update::msg(DashboardMsg::TableMsg(TableMsg::LoadRecords(conn.clone())))
+        } else {
+            Update::none()
+        }
     }
 
     fn move_to_dblist(&mut self) -> Update<DashboardMsg> {
