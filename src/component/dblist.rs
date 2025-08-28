@@ -242,14 +242,21 @@ impl Component for DBListComponent {
             DBListMsg::Load(conn) => {
                 // Fetch DB structure in background based on the selected connection
                 let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
+                    crate::logger::info(&format!("DBList: loading databases for {:?}", conn.r#type));
                     let result = db::DB::fetch_databases(&conn);
                     let msg = match result {
-                        Ok(dbs) => AppMsg::Root(RootMsg::Dashboard(DashboardMsg::DBListMsg(
-                            DBListMsg::Loaded(dbs),
-                        ))),
-                        Err(e) => AppMsg::Root(RootMsg::Dashboard(DashboardMsg::DBListMsg(
-                            DBListMsg::LoadFailed(e.to_string()),
-                        ))),
+                        Ok(dbs) => {
+                            crate::logger::info(&format!("DBList: loaded {} database(s)", dbs.len()));
+                            AppMsg::Root(RootMsg::Dashboard(DashboardMsg::DBListMsg(
+                                DBListMsg::Loaded(dbs),
+                            )))
+                        }
+                        Err(e) => {
+                            crate::logger::error(&format!("DBList: load failed: {}", e));
+                            AppMsg::Root(RootMsg::Dashboard(DashboardMsg::DBListMsg(
+                                DBListMsg::LoadFailed(e.to_string()),
+                            )))
+                        }
                     };
                     let _ = tx.send(msg);
                 };

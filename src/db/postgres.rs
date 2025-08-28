@@ -43,8 +43,10 @@ impl DBBehavior for Postgres {
         }
     }
     fn fetch_databases(conn: &Connection) -> Result<Vec<Database>> {
+        crate::logger::debug("postgres: connecting");
         let url = Postgres::database_url(conn)?;
         let mut client = postgres::Client::connect(&url, postgres::NoTls)?;
+        crate::logger::debug("postgres: connected");
 
         // Collect schema -> tables
         let rows = client.query(

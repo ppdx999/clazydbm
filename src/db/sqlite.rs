@@ -17,6 +17,7 @@ impl DBBehavior for Sqlite {
         Ok(format!("sqlite://{path}", path = path.to_str().unwrap()))
     }
     fn fetch_databases(conn: &Connection) -> Result<Vec<Database>> {
+        crate::logger::debug("sqlite: opening file");
         use rusqlite::Connection as SqliteConn;
 
         let path = conn
@@ -32,6 +33,7 @@ impl DBBehavior for Sqlite {
             .unwrap_or_else(|| "sqlite".to_string());
 
         let sc = SqliteConn::open(path)?;
+        crate::logger::debug("sqlite: opened");
         let mut stmt = sc.prepare(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
         )?;

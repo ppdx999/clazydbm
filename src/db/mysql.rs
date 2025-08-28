@@ -43,12 +43,14 @@ impl DBBehavior for Mysql {
         }
     }
     fn fetch_databases(conn: &Connection) -> Result<Vec<Database>> {
+        crate::logger::debug("mysql: connecting");
         use mysql::prelude::*;
         use mysql::params;
 
         let url = Mysql::database_url(conn)?;
         let opts = mysql::Opts::from_url(&url)?;
         let mut c = mysql::Conn::new(opts)?;
+        crate::logger::debug("mysql: connected");
 
         // Determine database list
         let dbs: Vec<String> = match conn.database.as_ref() {
@@ -71,7 +73,7 @@ impl DBBehavior for Mysql {
                 ORDER BY TABLE_NAME
             "#;
             let rows: Vec<(String, Option<String>)> = c.exec(q, params! { "schema" => &dbname })?;
-
+            
             let children = rows
                 .into_iter()
                 .map(|(name, engine)| {

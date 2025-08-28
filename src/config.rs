@@ -61,4 +61,10 @@ impl Config {
         let cfg = Self::new()?;
         Ok(cfg.conn)
     }
+
+    /// Public accessor for the per-user app config directory.
+    /// Used by other subsystems (e.g. logging) to store runtime files.
+    pub fn app_config_dir() -> Result<PathBuf> {
+        Self::get_app_config_path()
+    }
 }
