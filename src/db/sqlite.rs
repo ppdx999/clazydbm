@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::{component::Database, connection::Connection, db::DBBehavior};
+use crate::component::{Child, Database, Table};
+use crate::{connection::Connection, db::DBBehavior};
 
 pub struct Sqlite {}
 
@@ -44,7 +45,37 @@ fn expand_path(path: &Path) -> Option<PathBuf> {
     Some(expanded_path)
 }
 
-/// Placeholder: implement actual SQLite fetching here
-pub fn fetch_databases(_conn: &Connection) -> Result<Vec<Database>> {
-    Ok(vec![])
+/// Fetch SQLite tables from sqlite_master for the file
+pub fn fetch_databases(conn: &Connection) -> Result<Vec<Database>> {
+    use rusqlite::Connection as SqliteConn;
+
+    let path = conn
+        .path
+        .as_ref()
+        .and_then(|p| expand_path(p))
+        .ok_or_else(|| anyhow::anyhow!("invalid sqlite path"))?;
+
+    let dbname = conn
+        .name
+        .clone()
+        .or_else(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "sqlite".to_string());
+
+    let sc = SqliteConn::open(path)?;
+    let mut stmt = sc.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    )?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+
+    let mut children = Vec::new();
+    for r in rows {
+        let name = r?;
+        children.push(Child::Table(Table {
+            name,
+            engine: None,
+            schema: None,
+        }));
+    }
+
+    Ok(vec![Database::new(dbname, children)])
 }

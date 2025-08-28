@@ -11,7 +11,7 @@ mod table;
 
 pub use connection::{ConnectionComponent, ConnectionMsg};
 pub use dashboard::{DashboardComponent, DashboardMsg};
-pub use dblist::{DBListComponent, DBListMsg, Database};
+pub use dblist::{DBListComponent, DBListMsg, Child, Database, Schema, Table};
 pub use root::{RootComponent, RootMsg};
 pub use table::{TableComponent, TableMsg};
 
