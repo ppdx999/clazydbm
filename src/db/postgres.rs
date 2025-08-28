@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::component::{Child, Database, Schema, Table};
 use crate::{connection::Connection, db::DBBehavior};
+use crate::db::Records;
 use crate::logger::debug;
 
 pub struct Postgres {}
@@ -64,10 +65,10 @@ impl DBBehavior for Postgres {
         for row in rows {
             let schema: String = row.get(0);
             let table: String = row.get(1);
-            by_schema.entry(schema).or_default().push(Table {
+            by_schema.entry(schema.clone()).or_default().push(Table {
                 name: table,
                 engine: None,
-                schema: None,
+                schema: Some(schema),
             });
         }
 
@@ -83,5 +84,34 @@ impl DBBehavior for Postgres {
         }
 
         Ok(vec![Database::new(dbname, children)])
+    }
+
+    fn fetch_records(
+        conn: &Connection,
+        _database: &str,
+        table: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Records> {
+        // columns
+        let url = Postgres::database_url(conn)?;
+        let mut client = postgres::Client::connect(&url, postgres::NoTls)?;
+        let cols_rows = client.query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position",
+            &[&table],
+        )?;
+        let columns: Vec<String> = cols_rows.into_iter().map(|r| r.get::<_, String>(0)).collect();
+
+        // rows as JSON strings per row for broad type coverage (placeholder)
+        let q = format!("SELECT to_jsonb(t.*)::text FROM {} t LIMIT $1 OFFSET $2", table);
+        let rows = client.query(&q, &[&(limit as i64), &(offset as i64)])?;
+        let mut rows_vec = Vec::new();
+        for r in rows {
+            let j: String = r.get(0);
+            rows_vec.push(vec![j]);
+        }
+
+        let columns = if columns.is_empty() { vec!["json".to_string()] } else { columns };
+        Ok(Records { columns, rows: rows_vec })
     }
 }

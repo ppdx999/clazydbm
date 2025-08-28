@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use crate::component::{Child, Database, Table};
 use crate::{connection::Connection, db::DBBehavior};
+use crate::db::Records;
 use crate::logger::debug;
 
 pub struct Sqlite {}
@@ -51,6 +52,46 @@ impl DBBehavior for Sqlite {
         }
 
         Ok(vec![Database::new(dbname, children)])
+    }
+
+    fn fetch_records(
+        conn: &Connection,
+        database: &str,
+        table: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Records> {
+        use rusqlite::Connection as SqliteConn;
+        let _ = database; // not used for sqlite
+        let path = conn
+            .path
+            .as_ref()
+            .and_then(|p| expand_path(p))
+            .ok_or_else(|| anyhow::anyhow!("invalid sqlite path"))?;
+        let sc = SqliteConn::open(path)?;
+
+        // columns
+        let mut col_stmt = sc.prepare(&format!("PRAGMA table_info({});", table))?;
+        let col_iter = col_stmt.query_map([], |row| row.get::<_, String>(1))?; // name is col 1
+        let mut columns = Vec::new();
+        for c in col_iter { columns.push(c?); }
+
+        // rows
+        let mut rows_vec: Vec<Vec<String>> = Vec::new();
+        let q = format!("SELECT * FROM {} LIMIT {} OFFSET {}", table, limit, offset);
+        let mut stmt = sc.prepare(&q)?;
+        let col_count = stmt.column_count();
+        let rows = stmt.query_map([], |row| {
+            let mut v = Vec::with_capacity(col_count);
+            for i in 0..col_count {
+                let cell: Result<String, _> = row.get(i);
+                v.push(cell.unwrap_or_else(|_| "".to_string()));
+            }
+            Ok(v)
+        })?;
+        for r in rows { rows_vec.push(r?); }
+
+        Ok(Records { columns, rows: rows_vec })
     }
 }
 

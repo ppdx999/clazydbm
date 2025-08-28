@@ -23,6 +23,13 @@ pub enum DatabaseType {
 pub trait DBBehavior: Send + Sync {
     fn database_url(conn: &Connection) -> Result<String>;
     fn fetch_databases(conn: &Connection) -> Result<Vec<Database>>;
+    fn fetch_records(
+        conn: &Connection,
+        database: &str,
+        table: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Records>;
 }
 
 pub struct DB;
@@ -42,4 +49,25 @@ impl DBBehavior for DB {
             DatabaseType::Sqlite => Sqlite::fetch_databases(conn),
         }
     }
+    fn fetch_records(
+        conn: &Connection,
+        database: &str,
+        table: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Records> {
+        match conn.r#type {
+            DatabaseType::MySql => Mysql::fetch_records(conn, database, table, limit, offset),
+            DatabaseType::Postgres => Postgres::fetch_records(conn, database, table, limit, offset),
+            DatabaseType::Sqlite => Sqlite::fetch_records(conn, database, table, limit, offset),
+        }
+    }
 }
+
+#[derive(Debug, Clone)]
+pub struct Records {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>, // each inner Vec is a row of stringified values
+}
+
+// end

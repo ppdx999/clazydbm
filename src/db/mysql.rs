@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::component::{Child, Database, Table};
 use crate::{connection::Connection, db::DBBehavior};
+use crate::db::Records;
 use crate::logger::debug;
 
 pub struct Mysql {}
@@ -87,5 +88,51 @@ impl DBBehavior for Mysql {
         }
 
         Ok(out)
+    }
+
+    fn fetch_records(
+        conn: &Connection,
+        database: &str,
+        table: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Records> {
+        use mysql::prelude::*;
+        use mysql::{params, Value};
+        let url = Mysql::database_url(conn)?;
+        let opts = mysql::Opts::from_url(&url)?;
+        let mut c = mysql::Conn::new(opts)?;
+
+        // columns
+        let cols_q = r#"SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table ORDER BY ORDINAL_POSITION"#;
+        let columns: Vec<String> = c.exec(cols_q, params! { "schema" => database, "table" => table })?;
+
+        // rows
+        let q = format!("SELECT * FROM `{}`.`{}` LIMIT {} OFFSET {}", database, table, limit, offset);
+        let result = c.query_iter(q)?;
+        let mut rows_vec = Vec::new();
+        for row in result {
+            let row: mysql::Row = row?;
+            let mut out = Vec::new();
+            for v in row.unwrap() {
+                let s = match v {
+                    Value::NULL => String::new(),
+                    Value::Bytes(b) => String::from_utf8_lossy(&b).into_owned(),
+                    Value::Int(i) => i.to_string(),
+                    Value::UInt(u) => u.to_string(),
+                    Value::Float(f) => f.to_string(),
+                    Value::Double(d) => d.to_string(),
+                    Value::Date(y,m,d,h,mi,s, _us) => format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", y,m,d,h,mi,s),
+                    Value::Time(neg, d, h, mi, s, _us) => {
+                        let hours = d * 24 + u32::from(h);
+                        format!("{}{:02}:{:02}:{:02}", if neg {"-"} else {""}, hours, mi, s)
+                    }
+                };
+                out.push(s);
+            }
+            rows_vec.push(out);
+        }
+
+        Ok(Records { columns, rows: rows_vec })
     }
 }
