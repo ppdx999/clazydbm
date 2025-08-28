@@ -1,6 +1,4 @@
-#[cfg(feature = "mysql")]
 mod mysql;
-#[cfg(feature = "postgres")]
 mod postgres;
 mod sqlite;
 
@@ -9,9 +7,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 
-#[cfg(feature = "mysql")]
 pub use mysql::Mysql;
-#[cfg(feature = "postgres")]
 pub use postgres::Postgres;
 pub use sqlite::Sqlite;
 
@@ -37,26 +33,8 @@ pub struct DB;
 impl DBBehavior for DB {
     fn database_url(conn: &Connection) -> Result<String> {
         match conn.r#type {
-            DatabaseType::MySql => {
-                #[cfg(feature = "mysql")]
-                {
-                    Mysql::database_url(conn)
-                }
-                #[cfg(not(feature = "mysql"))]
-                {
-                    Err(anyhow::anyhow!("mysql feature disabled"))
-                }
-            }
-            DatabaseType::Postgres => {
-                #[cfg(feature = "postgres")]
-                {
-                    Postgres::database_url(conn)
-                }
-                #[cfg(not(feature = "postgres"))]
-                {
-                    Err(anyhow::anyhow!("postgres feature disabled"))
-                }
-            }
+            DatabaseType::MySql => Mysql::database_url(conn),
+            DatabaseType::Postgres => Postgres::database_url(conn),
             DatabaseType::Sqlite => Sqlite::database_url(conn),
         }
     }
@@ -69,26 +47,8 @@ impl DBBehavior for DB {
 /// Each backend implements its own logic in its module.
 pub fn fetch_databases(conn: &Connection) -> Result<Vec<Database>> {
     match conn.r#type {
-        DatabaseType::MySql => {
-            #[cfg(feature = "mysql")]
-            {
-                mysql::fetch_databases(conn)
-            }
-            #[cfg(not(feature = "mysql"))]
-            {
-                Err(anyhow::anyhow!("mysql feature disabled"))
-            }
-        }
-        DatabaseType::Postgres => {
-            #[cfg(feature = "postgres")]
-            {
-                postgres::fetch_databases(conn)
-            }
-            #[cfg(not(feature = "postgres"))]
-            {
-                Err(anyhow::anyhow!("postgres feature disabled"))
-            }
-        }
+        DatabaseType::MySql => mysql::fetch_databases(conn),
+        DatabaseType::Postgres => postgres::fetch_databases(conn),
         DatabaseType::Sqlite => sqlite::fetch_databases(conn),
     }
 }

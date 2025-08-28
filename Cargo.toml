@@ -15,23 +15,16 @@ async-trait = "0.1.89"
 [dependencies.mysql]
 version = "24"
 default-features = false
-optional = true
 
 [dependencies.postgres]
 version = "0.19"
 default-features = false
-optional = true
 
 [dependencies.rusqlite]
 version = "0.31"
 features = ["bundled"]
-optional = true
 
-[features]
-default = ["sqlite"]
-sqlite = ["dep:rusqlite"]
-mysql = ["dep:mysql"]
-postgres = ["dep:postgres"]
+## backend features disabled; build all three backends always
 
 [dependencies.flate2]
 version = "1"
