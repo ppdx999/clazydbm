@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::component::{Child, Database, Schema, Table};
 use crate::{connection::Connection, db::DBBehavior};
+use crate::logger::debug;
 
 pub struct Postgres {}
 
@@ -43,10 +44,10 @@ impl DBBehavior for Postgres {
         }
     }
     fn fetch_databases(conn: &Connection) -> Result<Vec<Database>> {
-        crate::logger::debug("postgres: connecting");
+        debug("postgres: connecting");
         let url = Postgres::database_url(conn)?;
         let mut client = postgres::Client::connect(&url, postgres::NoTls)?;
-        crate::logger::debug("postgres: connected");
+        debug("postgres: connected");
 
         // Collect schema -> tables
         let rows = client.query(

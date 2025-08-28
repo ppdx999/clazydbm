@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::component::{Child, Database, Table};
 use crate::{connection::Connection, db::DBBehavior};
+use crate::logger::debug;
 
 pub struct Mysql {}
 
@@ -43,14 +44,14 @@ impl DBBehavior for Mysql {
         }
     }
     fn fetch_databases(conn: &Connection) -> Result<Vec<Database>> {
-        crate::logger::debug("mysql: connecting");
+        debug("mysql: connecting");
         use mysql::prelude::*;
         use mysql::params;
 
         let url = Mysql::database_url(conn)?;
         let opts = mysql::Opts::from_url(&url)?;
         let mut c = mysql::Conn::new(opts)?;
-        crate::logger::debug("mysql: connected");
+        debug("mysql: connected");
 
         // Determine database list
         let dbs: Vec<String> = match conn.database.as_ref() {
