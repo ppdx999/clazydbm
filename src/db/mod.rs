@@ -2,10 +2,10 @@ mod mysql;
 mod postgres;
 mod sqlite;
 
+use crate::{component::Database, connection::Connection};
 use anyhow::Result;
+use async_trait::async_trait;
 use serde::Deserialize;
-
-use crate::connection::Connection;
 
 pub use mysql::Mysql;
 pub use postgres::Postgres;
@@ -21,11 +21,15 @@ pub enum DatabaseType {
     Sqlite,
 }
 
-pub trait DBBehavior {
+#[async_trait]
+pub trait DBBehavior: Send + Sync {
     fn database_url(conn: &Connection) -> Result<String>;
+    async fn get_databases(&self) -> Result<Vec<Database>>;
 }
 
-pub struct DB {}
+pub struct DB;
+
+#[async_trait]
 impl DBBehavior for DB {
     fn database_url(conn: &Connection) -> Result<String> {
         match conn.r#type {
@@ -33,5 +37,18 @@ impl DBBehavior for DB {
             DatabaseType::Postgres => Postgres::database_url(conn),
             DatabaseType::Sqlite => Sqlite::database_url(conn),
         }
+    }
+    async fn get_databases(&self) -> Result<Vec<Database>> {
+        Ok(vec![])
+    }
+}
+
+/// Fetch databases/schemas/tables for the given connection.
+/// Each backend implements its own logic in its module.
+pub fn fetch_databases(conn: &Connection) -> Result<Vec<Database>> {
+    match conn.r#type {
+        DatabaseType::MySql => mysql::fetch_databases(conn),
+        DatabaseType::Postgres => postgres::fetch_databases(conn),
+        DatabaseType::Sqlite => sqlite::fetch_databases(conn),
     }
 }

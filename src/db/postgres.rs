@@ -1,9 +1,11 @@
 use anyhow::Result;
+use async_trait::async_trait;
 
-use crate::{connection::Connection, db::DBBehavior};
+use crate::{component::Database, connection::Connection, db::DBBehavior};
 
 pub struct Postgres {}
 
+#[async_trait]
 impl DBBehavior for Postgres {
     fn database_url(conn: &Connection) -> Result<String> {
         let user = conn
@@ -41,4 +43,13 @@ impl DBBehavior for Postgres {
             )),
         }
     }
+    async fn get_databases(&self) -> Result<Vec<Database>> {
+        // Unused for now; DBList fetch is routed via free function below
+        Ok(vec![])
+    }
+}
+
+/// Placeholder: implement actual PostgreSQL fetching here
+pub fn fetch_databases(_conn: &Connection) -> Result<Vec<Database>> {
+    Ok(vec![])
 }

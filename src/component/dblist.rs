@@ -8,7 +8,10 @@ use ratatui::{
 };
 
 use super::Component;
-use crate::cmd::Update;
+use crate::app::AppMsg;
+use crate::cmd::{Command, Update};
+use crate::component::{DashboardMsg, RootMsg};
+use crate::{connection::Connection, db};
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Database {
@@ -66,6 +69,9 @@ pub enum DBListMsg {
     Fold,
     SelectTable { database: String, table: String },
     Filter,
+    Load(Connection),
+    Loaded(Vec<Database>),
+    LoadFailed(String),
 }
 
 pub enum Focus {
@@ -108,43 +114,8 @@ pub struct DBListComponent {
 
 impl DBListComponent {
     pub fn new() -> Self {
-        // Create sample data structure
-        let databases = vec![
-            Database::new(
-                "Database 1".to_string(),
-                vec![
-                    Child::Table(Table {
-                        name: "users".to_string(),
-                        engine: Some("InnoDB".to_string()),
-                        schema: None,
-                    }),
-                    Child::Table(Table {
-                        name: "posts".to_string(),
-                        engine: Some("InnoDB".to_string()),
-                        schema: None,
-                    }),
-                    Child::Schema(Schema {
-                        name: "public".to_string(),
-                        tables: vec![Table {
-                            name: "orders".to_string(),
-                            engine: None,
-                            schema: Some("public".to_string()),
-                        }],
-                    }),
-                ],
-            ),
-            Database::new(
-                "Database 2".to_string(),
-                vec![Child::Table(Table {
-                    name: "products".to_string(),
-                    engine: Some("MyISAM".to_string()),
-                    schema: None,
-                })],
-            ),
-        ];
-
         let mut component = Self {
-            databases,
+            databases: vec![],
             flat_nodes: vec![],
             selected: 0,
             focus: Focus::Tree,
@@ -267,6 +238,34 @@ impl Component for DBListComponent {
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
         match msg {
+            DBListMsg::Load(conn) => {
+                // Fetch DB structure in background based on the selected connection
+                let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
+                    let result = db::fetch_databases(&conn);
+                    let msg = match result {
+                        Ok(dbs) => AppMsg::Root(RootMsg::Dashboard(DashboardMsg::DBListMsg(
+                            DBListMsg::Loaded(dbs),
+                        ))),
+                        Err(e) => AppMsg::Root(RootMsg::Dashboard(DashboardMsg::DBListMsg(
+                            DBListMsg::LoadFailed(e.to_string()),
+                        ))),
+                    };
+                    let _ = tx.send(msg);
+                };
+                Update::cmd(Command::Spawn(Box::new(task)))
+            }
+            DBListMsg::Loaded(dbs) => {
+                self.databases = dbs;
+                self.expanded_databases.clear();
+                self.expanded_schemas.clear();
+                self.selected = 0;
+                self.rebuild_flat_list();
+                Update::none()
+            }
+            DBListMsg::LoadFailed(_err) => {
+                // Keep current state; optionally we could surface error in UI later
+                Update::none()
+            }
             DBListMsg::MoveUp => {
                 if !self.flat_nodes.is_empty() {
                     self.selected = self.selected.saturating_sub(1);

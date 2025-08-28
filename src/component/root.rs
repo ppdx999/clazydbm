@@ -49,9 +49,15 @@ impl RootComponent {
             dashboard: DashboardComponent::new(),
         }
     }
-    fn move_to_dashboard(&mut self, _conn: Connection) -> Update<RootMsg> {
+    fn move_to_dashboard(&mut self, conn: Connection) -> Update<RootMsg> {
+        // Store selected connection and trigger DBList load
+        self.dashboard.set_connection(conn.clone());
         self.focus = Focus::Dashboard;
-        Update::none()
+        Update::msg(RootMsg::Dashboard(
+            crate::component::DashboardMsg::DBListMsg(
+                crate::component::DBListMsg::Load(conn),
+            ),
+        ))
     }
     fn move_to_connection(&mut self) -> Update<RootMsg> {
         self.focus = Focus::Connection;

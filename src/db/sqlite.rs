@@ -1,11 +1,13 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use async_trait::async_trait;
 
-use crate::{connection::Connection, db::DBBehavior};
+use crate::{component::Database, connection::Connection, db::DBBehavior};
 
 pub struct Sqlite {}
 
+#[async_trait]
 impl DBBehavior for Sqlite {
     fn database_url(conn: &Connection) -> Result<String> {
         let path = conn.path.as_ref().map_or(
@@ -14,6 +16,10 @@ impl DBBehavior for Sqlite {
         )?;
 
         Ok(format!("sqlite://{path}", path = path.to_str().unwrap()))
+    }
+    async fn get_databases(&self) -> Result<Vec<Database>> {
+        // Unused for now; DBList fetch is routed via free function below
+        Ok(vec![])
     }
 }
 
@@ -36,4 +42,9 @@ fn expand_path(path: &Path) -> Option<PathBuf> {
         }
     }
     Some(expanded_path)
+}
+
+/// Placeholder: implement actual SQLite fetching here
+pub fn fetch_databases(_conn: &Connection) -> Result<Vec<Database>> {
+    Ok(vec![])
 }
