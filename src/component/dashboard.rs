@@ -21,6 +21,7 @@ pub enum DashboardMsg {
     },
     /// Table wants to go back to DBList focus
     BackToDBList,
+    ConnectionSelected(Connection),
     DBListMsg(DBListMsg),
     TableMsg(TableMsg),
 }
@@ -68,10 +69,6 @@ impl DashboardComponent {
         }
     }
 
-    pub fn set_connection(&mut self, conn: Connection) {
-        self.connection = Some(conn.clone());
-    }
-
     fn move_to_table(&mut self, database: String, table: String) -> Update<DashboardMsg> {
         self.table.set_table(database, table);
         self.focus = DashboardFocus::Table;
@@ -87,6 +84,13 @@ impl DashboardComponent {
         self.focus = DashboardFocus::DBList;
         Update::none()
     }
+
+    fn on_connection_selected(&mut self, conn: Connection) -> Update<DashboardMsg> {
+        // Store selected connection
+        self.connection = Some(conn.clone());
+        // Trigger DBList load immediately
+        self.dblist.update(DBListMsg::Load(conn)).map_auto()
+    }
 }
 
 impl Component for DashboardComponent {
@@ -97,6 +101,7 @@ impl Component for DashboardComponent {
             DashboardMsg::SelectTable { database, table } => self.move_to_table(database, table),
             DashboardMsg::BackToDBList => self.move_to_dblist(),
             DashboardMsg::Leave => Update::msg(DashboardMsg::Leave),
+            DashboardMsg::ConnectionSelected(conn) => self.on_connection_selected(conn),
             DashboardMsg::DBListMsg(m) => self.dblist.update(m).map_auto(),
             DashboardMsg::TableMsg(m) => self.table.update(m).map_auto(),
         }
