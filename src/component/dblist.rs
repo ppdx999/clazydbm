@@ -11,6 +11,7 @@ use super::Component;
 use crate::app::AppMsg;
 use crate::cmd::{Command, Update};
 use crate::component::{DashboardMsg, RootMsg};
+use crate::db::DBBehavior;
 use crate::{connection::Connection, db};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -241,7 +242,7 @@ impl Component for DBListComponent {
             DBListMsg::Load(conn) => {
                 // Fetch DB structure in background based on the selected connection
                 let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
-                    let result = db::fetch_databases(&conn);
+                    let result = db::DB::fetch_databases(&conn);
                     let msg = match result {
                         Ok(dbs) => AppMsg::Root(RootMsg::Dashboard(DashboardMsg::DBListMsg(
                             DBListMsg::Loaded(dbs),
