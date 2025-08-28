@@ -8,11 +8,10 @@ use ratatui::{
 };
 
 use super::Component;
+use crate::app::AppMsg;
 use crate::cmd::{Command, Update};
-use crate::component::{DashboardMsg, RootMsg};
 use crate::db::DBBehavior;
 use crate::logger::{error, info};
-use crate::{app::AppMsg, db::DB};
 use crate::{connection::Connection, db};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -255,8 +254,8 @@ impl DBListComponent {
         self.flat_nodes.get(self.selected)
     }
 
-    fn on_load(conn: Connection) -> Update<DBListMsg> {
-        let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
+    fn on_load(conn: Connection) -> impl FnOnce(std::sync::mpsc::Sender<AppMsg>) + Send + 'static {
+        move |tx: std::sync::mpsc::Sender<AppMsg>| {
             info(&format!("DBList: loading databases for {:?}", conn.r#type));
             let result = db::DB::fetch_databases(&conn);
             let msg = match result {
@@ -270,8 +269,7 @@ impl DBListComponent {
                 }
             };
             let _ = tx.send(msg);
-        };
-        Update::cmd(Command::Spawn(Box::new(task)))
+        }
     }
     fn on_loaded(&mut self, dbs: Vec<Database>) -> Update<DBListMsg> {
         self.databases = dbs;
@@ -288,24 +286,15 @@ impl Component for DBListComponent {
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
         match msg {
-            DBListMsg::Load(conn) => Self::on_load(conn),
+            DBListMsg::Load(conn) => Command::Spawn(Box::new(Self::on_load(conn))).into(),
             DBListMsg::Loaded(dbs) => self.on_loaded(dbs),
-            DBListMsg::LoadFailed(_err) => {
-                // Keep current state; optionally we could surface error in UI later
-                Update::none()
-            }
-            DBListMsg::MoveUp => { self.move_up(); Update::none() }
-            DBListMsg::MoveDown => { self.move_down(); Update::none() }
-            DBListMsg::MoveTop => { self.move_top(); Update::none() }
-            DBListMsg::MoveBottom => { self.move_bottom(); Update::none() }
-            DBListMsg::Expand => {
-                self.toggle_expand();
-                Update::none()
-            }
-            DBListMsg::Fold => {
-                self.toggle_expand();
-                Update::none()
-            }
+            DBListMsg::LoadFailed(_err) => Update::none(),
+            DBListMsg::MoveUp => self.move_up().into(),
+            DBListMsg::MoveDown => self.move_down().into(),
+            DBListMsg::MoveTop => self.move_top().into(),
+            DBListMsg::MoveBottom => self.move_bottom().into(),
+            DBListMsg::Expand => self.toggle_expand().into(),
+            DBListMsg::Fold => self.toggle_expand().into(),
             DBListMsg::Filter => {
                 self.focus = Focus::Filter;
                 Update::none()
@@ -319,24 +308,25 @@ impl Component for DBListComponent {
 
         match self.focus {
             Focus::Tree => match key.code {
-                Up | Char('k') => Update::msg(DBListMsg::MoveUp),
-                Down | Char('j') => Update::msg(DBListMsg::MoveDown),
-                Char('g') => Update::msg(DBListMsg::MoveTop),
-                Char('G') => Update::msg(DBListMsg::MoveBottom),
-                Right | Char('l') => Update::msg(DBListMsg::Expand),
-                Left | Char('h') => Update::msg(DBListMsg::Fold),
-                Char('/') => Update::msg(DBListMsg::Filter),
-                Esc => Update::msg(DBListMsg::LeaveDashboard),
+                Up | Char('k') => DBListMsg::MoveUp.into(),
+                Down | Char('j') => DBListMsg::MoveDown.into(),
+                Char('g') => DBListMsg::MoveTop.into(),
+                Char('G') => DBListMsg::MoveBottom.into(),
+                Right | Char('l') => DBListMsg::Expand.into(),
+                Left | Char('h') => DBListMsg::Fold.into(),
+                Char('/') => DBListMsg::Filter.into(),
+                Esc => DBListMsg::LeaveDashboard.into(),
                 Enter => {
                     if let Some(node) = self.selected_node() {
                         match &node.node_type {
                             FlatNodeType::Table {
                                 database, table, ..
                             } => {
-                                return Update::msg(DBListMsg::SelectTable {
+                                return DBListMsg::SelectTable {
                                     database: database.clone(),
                                     table: table.clone(),
-                                });
+                                }
+                                .into();
                             }
                             FlatNodeType::Database(_) | FlatNodeType::Schema { .. } => {
                                 // Expand/collapse on Enter for databases and schemas

@@ -74,7 +74,7 @@ impl DashboardComponent {
         self.focus = DashboardFocus::Table;
         // Trigger records load using current connection
         if let Some(conn) = &self.connection {
-            Update::msg(DashboardMsg::TableMsg(TableMsg::LoadRecords(conn.clone())))
+            DashboardMsg::TableMsg(TableMsg::LoadRecords(conn.clone())).into()
         } else {
             Update::none()
         }
@@ -100,7 +100,7 @@ impl Component for DashboardComponent {
         match msg {
             DashboardMsg::SelectTable { database, table } => self.move_to_table(database, table),
             DashboardMsg::BackToDBList => self.move_to_dblist(),
-            DashboardMsg::Leave => Update::msg(DashboardMsg::Leave),
+            DashboardMsg::Leave => DashboardMsg::Leave.into(),
             DashboardMsg::ConnectionSelected(conn) => self.on_connection_selected(conn),
             DashboardMsg::DBListMsg(m) => self.dblist.update(m).map_auto(),
             DashboardMsg::TableMsg(m) => self.table.update(m).map_auto(),

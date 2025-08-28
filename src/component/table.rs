@@ -77,9 +77,11 @@ impl Component for TableComponent {
                 self.focus = TableFocus::Properties;
                 Update::none()
             }
-            TableMsg::BackToDBList => Update::msg(TableMsg::BackToDBList),
+            TableMsg::BackToDBList => TableMsg::BackToDBList.into(),
             TableMsg::LoadRecords(conn) => {
-                let Some(info) = self.table_info.clone() else { return Update::none(); };
+                let Some(info) = self.table_info.clone() else {
+                    return Update::none();
+                };
                 debug(&format!("Table: loading {}.{}", info.database, info.table));
                 let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
                     let res = DB::fetch_records(&conn, &info.database, &info.table, 200, 0);
@@ -92,7 +94,7 @@ impl Component for TableComponent {
                     };
                     let _ = tx.send(msg);
                 };
-                Update::cmd(Command::Spawn(Box::new(task)))
+                Command::Spawn(Box::new(task)).into()
             }
             TableMsg::RecordsLoaded(recs) => {
                 self.records = Some(recs);
@@ -107,11 +109,11 @@ impl Component for TableComponent {
 
         match key.code {
             // Tab switching based on ARCHITECTURE.md
-            Char('1') => Update::msg(TableMsg::FocusRecords),
-            Char('2') => Update::msg(TableMsg::FocusSQL),
-            Char('3') => Update::msg(TableMsg::FocusProperties),
+            Char('1') => TableMsg::FocusRecords.into(),
+            Char('2') => TableMsg::FocusSQL.into(),
+            Char('3') => TableMsg::FocusProperties.into(),
             // Back to DBList focus
-            Tab | Esc => Update::msg(TableMsg::BackToDBList),
+            Tab | Esc => TableMsg::BackToDBList.into(),
             _ => Update::none(),
         }
     }
@@ -166,28 +168,34 @@ impl Component for TableComponent {
             match self.focus {
                 TableFocus::Records => {
                     if let Some(recs) = &self.records {
-                        use ratatui::widgets::{Row, Table as TuiTable, Cell as TuiCell};
-                        let header = Row::new(
-                            recs.columns.iter().map(|c| TuiCell::from(c.as_str()).style(Style::default().add_modifier(Modifier::BOLD)))
+                        use ratatui::widgets::{Cell as TuiCell, Row, Table as TuiTable};
+                        let header = Row::new(recs.columns.iter().map(|c| {
+                            TuiCell::from(c.as_str())
+                                .style(Style::default().add_modifier(Modifier::BOLD))
+                        }));
+                        let rows = recs
+                            .rows
+                            .iter()
+                            .map(|r| Row::new(r.iter().map(|v| v.as_str())));
+                        let widths: Vec<Constraint> = recs
+                            .columns
+                            .iter()
+                            .map(|_| Constraint::Length(20))
+                            .collect();
+                        let table = TuiTable::new(rows, widths).header(header).block(
+                            Block::default()
+                                .title("Records")
+                                .borders(Borders::ALL)
+                                .border_style(content_style),
                         );
-                        let rows = recs.rows.iter().map(|r| Row::new(r.iter().map(|v| v.as_str())));
-                        let widths: Vec<Constraint> = recs.columns.iter().map(|_| Constraint::Length(20)).collect();
-                        let table = TuiTable::new(rows, widths)
-                            .header(header)
-                            .block(
-                                Block::default()
-                                    .title("Records")
-                                    .borders(Borders::ALL)
-                                    .border_style(content_style),
-                            )
-                            ;
                         f.render_widget(table, content_area);
                     } else {
                         let records_block = Block::default()
                             .title("Records")
                             .borders(Borders::ALL)
                             .border_style(content_style);
-                        let records_content = Paragraph::new("Loading records...").block(records_block);
+                        let records_content =
+                            Paragraph::new("Loading records...").block(records_block);
                         f.render_widget(records_content, content_area);
                     }
                 }

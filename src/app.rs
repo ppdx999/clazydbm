@@ -2,7 +2,7 @@ use crate::cmd::Command;
 use crate::cmd::MapMsg;
 use crate::cmd::Update;
 use crate::component::ConnectionMsg;
-use crate::component::{Component, RootComponent, RootMsg, DashboardMsg, DBListMsg, TableMsg};
+use crate::component::{Component, DBListMsg, DashboardMsg, RootComponent, RootMsg, TableMsg};
 use crossterm::event::KeyModifiers;
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::Terminal;

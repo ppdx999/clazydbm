@@ -1,6 +1,7 @@
 use std::sync::mpsc::Sender;
 
 use crate::app::AppMsg;
+use crate::component::{ConnectionMsg, DashboardMsg, DBListMsg, RootMsg, TableMsg};
 
 pub enum Command {
     None,
@@ -56,6 +57,46 @@ impl<T> Update<T> {
         }
     }
 }
+
+impl<M> From<()> for Update<M> {
+    fn from(_: ()) -> Self {
+        Update::none()
+    }
+}
+
+impl<M> From<Command> for Update<M> {
+    fn from(cmd: Command) -> Self {
+        Update::with_cmd(cmd)
+    }
+}
+
+// Message-specific From implementations to allow `msg.into()` ergonomics
+impl From<DBListMsg> for Update<DBListMsg> {
+    fn from(msg: DBListMsg) -> Self {
+        Update::msg(msg)
+    }
+}
+impl From<TableMsg> for Update<TableMsg> {
+    fn from(msg: TableMsg) -> Self {
+        Update::msg(msg)
+    }
+}
+impl From<DashboardMsg> for Update<DashboardMsg> {
+    fn from(msg: DashboardMsg) -> Self {
+        Update::msg(msg)
+    }
+}
+impl From<ConnectionMsg> for Update<ConnectionMsg> {
+    fn from(msg: ConnectionMsg) -> Self {
+        Update::msg(msg)
+    }
+}
+impl From<RootMsg> for Update<RootMsg> {
+    fn from(msg: RootMsg) -> Self {
+        Update::msg(msg)
+    }
+}
+
 
 pub trait MapMsg<M> {
     fn map<ParentMsg>(self, wrap: impl FnOnce(M) -> ParentMsg) -> Update<ParentMsg>;

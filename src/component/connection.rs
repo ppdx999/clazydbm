@@ -59,12 +59,12 @@ impl Component for ConnectionComponent {
         use crossterm::event::KeyCode::*;
         match key.code {
             Enter => match self.selected_connection() {
-                Some(conn) => Update::msg(ConnectionMsg::ConnectionSelected(conn.clone())),
+                Some(conn) => ConnectionMsg::ConnectionSelected(conn.clone()).into(),
                 // TODO: Set error state to show in UI
                 None => Update::none(),
             },
-            Up | Char('k') => Update::msg(ConnectionMsg::MoveUp),
-            Down | Char('j') => Update::msg(ConnectionMsg::MoveDown),
+            Up | Char('k') => ConnectionMsg::MoveUp.into(),
+            Down | Char('j') => ConnectionMsg::MoveDown.into(),
             _ => Update::none(),
         }
     }
