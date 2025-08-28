@@ -129,6 +129,27 @@ impl DBListComponent {
         component
     }
 
+    fn move_up(&mut self) {
+        if !self.flat_nodes.is_empty() {
+            self.selected = self.selected.saturating_sub(1);
+        }
+    }
+    fn move_down(&mut self) {
+        if !self.flat_nodes.is_empty() {
+            self.selected = (self.selected + 1).min(self.flat_nodes.len() - 1);
+        }
+    }
+    fn move_top(&mut self) {
+        if !self.flat_nodes.is_empty() {
+            self.selected = 0;
+        }
+    }
+    fn move_bottom(&mut self) {
+        if !self.flat_nodes.is_empty() {
+            self.selected = self.flat_nodes.len() - 1;
+        }
+    }
+
     fn rebuild_flat_list(&mut self) {
         let mut flat_nodes = Vec::new();
         for database in &self.databases {
@@ -234,19 +255,31 @@ impl DBListComponent {
         self.flat_nodes.get(self.selected)
     }
 
-    fn load(&mut self, conn: Connection) -> DBListMsg {
-        info(&format!("DBList: loading databases for {:?}", conn.r#type));
-        let result = db::DB::fetch_databases(&conn);
-        match result {
-            Ok(dbs) => {
-                info(&format!("DBList: loaded {} database(s)", dbs.len()));
-                DBListMsg::Loaded(dbs).into()
-            }
-            Err(e) => {
-                error(&format!("DBList: load failed: {}", e));
-                DBListMsg::LoadFailed(e.to_string()).into()
-            }
-        }
+    fn on_load(conn: Connection) -> Update<DBListMsg> {
+        let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
+            info(&format!("DBList: loading databases for {:?}", conn.r#type));
+            let result = db::DB::fetch_databases(&conn);
+            let msg = match result {
+                Ok(dbs) => {
+                    info(&format!("DBList: loaded {} database(s)", dbs.len()));
+                    DBListMsg::Loaded(dbs).into()
+                }
+                Err(e) => {
+                    error(&format!("DBList: load failed: {}", e));
+                    DBListMsg::LoadFailed(e.to_string()).into()
+                }
+            };
+            let _ = tx.send(msg);
+        };
+        Update::cmd(Command::Spawn(Box::new(task)))
+    }
+    fn on_loaded(&mut self, dbs: Vec<Database>) -> Update<DBListMsg> {
+        self.databases = dbs;
+        self.expanded_databases.clear();
+        self.expanded_schemas.clear();
+        self.selected = 0;
+        self.rebuild_flat_list();
+        Update::none()
     }
 }
 
@@ -255,61 +288,16 @@ impl Component for DBListComponent {
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
         match msg {
-            DBListMsg::Load(conn) => {
-                // Fetch DB structure in background based on the selected connection
-                let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
-                    info(&format!("DBList: loading databases for {:?}", conn.r#type));
-                    let result = db::DB::fetch_databases(&conn);
-                    let msg = match result {
-                        Ok(dbs) => {
-                            info(&format!("DBList: loaded {} database(s)", dbs.len()));
-                            DBListMsg::Loaded(dbs).into()
-                        }
-                        Err(e) => {
-                            error(&format!("DBList: load failed: {}", e));
-                            DBListMsg::LoadFailed(e.to_string()).into()
-                        }
-                    };
-                    let _ = tx.send(msg);
-                };
-                Update::cmd(Command::Spawn(Box::new(task)))
-            }
-            DBListMsg::Loaded(dbs) => {
-                self.databases = dbs;
-                self.expanded_databases.clear();
-                self.expanded_schemas.clear();
-                self.selected = 0;
-                self.rebuild_flat_list();
-                Update::none()
-            }
+            DBListMsg::Load(conn) => Self::on_load(conn),
+            DBListMsg::Loaded(dbs) => self.on_loaded(dbs),
             DBListMsg::LoadFailed(_err) => {
                 // Keep current state; optionally we could surface error in UI later
                 Update::none()
             }
-            DBListMsg::MoveUp => {
-                if !self.flat_nodes.is_empty() {
-                    self.selected = self.selected.saturating_sub(1);
-                }
-                Update::none()
-            }
-            DBListMsg::MoveDown => {
-                if !self.flat_nodes.is_empty() {
-                    self.selected = (self.selected + 1).min(self.flat_nodes.len() - 1);
-                }
-                Update::none()
-            }
-            DBListMsg::MoveTop => {
-                if !self.flat_nodes.is_empty() {
-                    self.selected = 0;
-                }
-                Update::none()
-            }
-            DBListMsg::MoveBottom => {
-                if !self.flat_nodes.is_empty() {
-                    self.selected = self.flat_nodes.len() - 1;
-                }
-                Update::none()
-            }
+            DBListMsg::MoveUp => { self.move_up(); Update::none() }
+            DBListMsg::MoveDown => { self.move_down(); Update::none() }
+            DBListMsg::MoveTop => { self.move_top(); Update::none() }
+            DBListMsg::MoveBottom => { self.move_bottom(); Update::none() }
             DBListMsg::Expand => {
                 self.toggle_expand();
                 Update::none()
