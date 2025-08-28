@@ -17,6 +17,12 @@ pub enum AppMsg {
     Root(RootMsg),
 }
 
+impl From<RootMsg> for AppMsg {
+    fn from(msg: RootMsg) -> Self {
+        AppMsg::Root(msg)
+    }
+}
+
 pub struct App<B: Backend> {
     term: Terminal<B>,
     root: RootComponent,
@@ -39,7 +45,7 @@ impl<B: Backend> App<B> {
 
     pub fn run(&mut self) -> Result<()> {
         while !self.should_quit {
-            self.handle_messages();
+            self.handle_async_messages();
             self.draw()?;
             self.handle_event()?;
         }
@@ -67,36 +73,33 @@ impl<B: Backend> App<B> {
             return Ok(());
         }
 
-        let u = self.root.handle_key(key).map(AppMsg::Root);
-        self.handle_update(u);
+        let update = self.root.handle_key(key).map_auto();
+        self.handle_update(update);
 
         Ok(())
     }
 
     fn handle_update(&mut self, update: Update<AppMsg>) {
         if let Some(msg) = update.msg {
-            if let Some(cmd) = self.apply(msg) {
-                self.run_command(cmd);
-            }
+            let u = self.handle_msg(msg);
+            self.handle_update(u);
         }
         self.run_command(update.cmd);
     }
 
-    fn handle_messages(&mut self) {
-        while let Ok(msg) = self.rx.try_recv() {
-            if let Some(cmd) = self.apply(msg) {
-                self.run_command(cmd);
-            }
-        }
-    }
-
-    fn apply(&mut self, msg: AppMsg) -> Option<Command> {
+    fn handle_msg(&mut self, msg: AppMsg) -> Update<AppMsg> {
         match msg {
             AppMsg::Quit => {
                 self.should_quit = true;
-                None
+                Update::none()
             }
-            AppMsg::Root(m) => self.root.update(m).map(AppMsg::Root).cmd.into(),
+            AppMsg::Root(m) => self.root.update(m).map_auto(),
+        }
+    }
+
+    fn handle_async_messages(&mut self) {
+        while let Ok(msg) = self.rx.try_recv() {
+            self.handle_update(Update::msg(msg));
         }
     }
 
