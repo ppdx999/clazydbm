@@ -8,11 +8,11 @@ use ratatui::{
 };
 
 use super::Component;
-use crate::app::AppMsg;
 use crate::cmd::{Command, Update};
 use crate::component::{DashboardMsg, RootMsg};
 use crate::db::DBBehavior;
 use crate::logger::{error, info};
+use crate::{app::AppMsg, db::DB};
 use crate::{connection::Connection, db};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -233,6 +233,21 @@ impl DBListComponent {
     fn selected_node(&self) -> Option<&FlatNode> {
         self.flat_nodes.get(self.selected)
     }
+
+    fn load(&mut self, conn: Connection) -> DBListMsg {
+        info(&format!("DBList: loading databases for {:?}", conn.r#type));
+        let result = db::DB::fetch_databases(&conn);
+        match result {
+            Ok(dbs) => {
+                info(&format!("DBList: loaded {} database(s)", dbs.len()));
+                DBListMsg::Loaded(dbs).into()
+            }
+            Err(e) => {
+                error(&format!("DBList: load failed: {}", e));
+                DBListMsg::LoadFailed(e.to_string()).into()
+            }
+        }
+    }
 }
 
 impl Component for DBListComponent {
@@ -248,15 +263,11 @@ impl Component for DBListComponent {
                     let msg = match result {
                         Ok(dbs) => {
                             info(&format!("DBList: loaded {} database(s)", dbs.len()));
-                            AppMsg::Root(RootMsg::Dashboard(DashboardMsg::DBListMsg(
-                                DBListMsg::Loaded(dbs),
-                            )))
+                            DBListMsg::Loaded(dbs).into()
                         }
                         Err(e) => {
                             error(&format!("DBList: load failed: {}", e));
-                            AppMsg::Root(RootMsg::Dashboard(DashboardMsg::DBListMsg(
-                                DBListMsg::LoadFailed(e.to_string()),
-                            )))
+                            DBListMsg::LoadFailed(e.to_string()).into()
                         }
                     };
                     let _ = tx.send(msg);

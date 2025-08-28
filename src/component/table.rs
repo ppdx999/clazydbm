@@ -84,22 +84,10 @@ impl Component for TableComponent {
                 let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
                     let res = DB::fetch_records(&conn, &info.database, &info.table, 200, 0);
                     let msg = match res {
-                        Ok(recs) => AppMsg::Root(
-                            crate::component::RootMsg::Dashboard(
-                                crate::component::DashboardMsg::TableMsg(
-                                    TableMsg::RecordsLoaded(recs),
-                                ),
-                            ),
-                        ),
+                        Ok(recs) => TableMsg::RecordsLoaded(recs).into(),
                         Err(e) => {
                             error(&format!("Table: load failed: {}", e));
-                            AppMsg::Root(
-                                crate::component::RootMsg::Dashboard(
-                                    crate::component::DashboardMsg::TableMsg(
-                                        TableMsg::RecordsLoadFailed(e.to_string()),
-                                    ),
-                                ),
-                            )
+                            TableMsg::RecordsLoadFailed(e.to_string()).into()
                         }
                     };
                     let _ = tx.send(msg);

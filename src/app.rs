@@ -2,7 +2,7 @@ use crate::cmd::Command;
 use crate::cmd::MapMsg;
 use crate::cmd::Update;
 use crate::component::ConnectionMsg;
-use crate::component::{Component, RootComponent, RootMsg};
+use crate::component::{Component, RootComponent, RootMsg, DashboardMsg, DBListMsg, TableMsg};
 use crossterm::event::KeyModifiers;
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::Terminal;
@@ -20,6 +20,28 @@ pub enum AppMsg {
 impl From<RootMsg> for AppMsg {
     fn from(msg: RootMsg) -> Self {
         AppMsg::Root(msg)
+    }
+}
+
+// Convenience: allow bubbling lower-level messages directly into AppMsg
+impl From<DashboardMsg> for AppMsg {
+    fn from(msg: DashboardMsg) -> Self {
+        AppMsg::from(RootMsg::from(msg))
+    }
+}
+impl From<DBListMsg> for AppMsg {
+    fn from(msg: DBListMsg) -> Self {
+        AppMsg::from(DashboardMsg::from(msg))
+    }
+}
+impl From<TableMsg> for AppMsg {
+    fn from(msg: TableMsg) -> Self {
+        AppMsg::from(DashboardMsg::from(msg))
+    }
+}
+impl From<ConnectionMsg> for AppMsg {
+    fn from(msg: ConnectionMsg) -> Self {
+        AppMsg::from(RootMsg::from(msg))
     }
 }
 
