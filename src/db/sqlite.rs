@@ -76,20 +76,28 @@ impl DBBehavior for Sqlite {
         let mut columns = Vec::new();
         for c in col_iter { columns.push(c?); }
 
-        // rows
+        // rows: read ValueRef per column and stringify conservatively
+        use rusqlite::types::ValueRef;
         let mut rows_vec: Vec<Vec<String>> = Vec::new();
         let q = format!("SELECT * FROM {} LIMIT {} OFFSET {}", table, limit, offset);
         let mut stmt = sc.prepare(&q)?;
         let col_count = stmt.column_count();
-        let rows = stmt.query_map([], |row| {
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
             let mut v = Vec::with_capacity(col_count);
             for i in 0..col_count {
-                let cell: Result<String, _> = row.get(i);
-                v.push(cell.unwrap_or_else(|_| "".to_string()));
+                let cell = row.get_ref(i)?;
+                let s = match cell {
+                    ValueRef::Null => String::new(),
+                    ValueRef::Integer(i) => i.to_string(),
+                    ValueRef::Real(f) => f.to_string(),
+                    ValueRef::Text(t) => String::from_utf8_lossy(t).into_owned(),
+                    ValueRef::Blob(b) => format!("<blob {} bytes>", b.len()),
+                };
+                v.push(s);
             }
-            Ok(v)
-        })?;
-        for r in rows { rows_vec.push(r?); }
+            rows_vec.push(v);
+        }
 
         Ok(Records { columns, rows: rows_vec })
     }

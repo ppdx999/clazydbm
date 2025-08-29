@@ -102,16 +102,30 @@ impl DBBehavior for Postgres {
         )?;
         let columns: Vec<String> = cols_rows.into_iter().map(|r| r.get::<_, String>(0)).collect();
 
-        // rows as JSON strings per row for broad type coverage (placeholder)
-        let q = format!("SELECT to_jsonb(t.*)::text FROM {} t LIMIT $1 OFFSET $2", table);
+        // Build SELECT casting each column to text for consistent string output
+        let select_list = if columns.is_empty() {
+            "*".to_string()
+        } else {
+            columns
+                .iter()
+                .map(|c| format!("\"{}\"::text", c.replace('"', "\"\"")))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let q = format!("SELECT {} FROM \"{}\" LIMIT $1 OFFSET $2", select_list, table.replace('"', "\"\""));
         let rows = client.query(&q, &[&(limit as i64), &(offset as i64)])?;
         let mut rows_vec = Vec::new();
         for r in rows {
-            let j: String = r.get(0);
-            rows_vec.push(vec![j]);
+            let mut row_vec = Vec::new();
+            let cols = r.len();
+            for i in 0..cols {
+                let v: Option<String> = r.get(i);
+                row_vec.push(v.unwrap_or_default());
+            }
+            rows_vec.push(row_vec);
         }
 
-        let columns = if columns.is_empty() { vec!["json".to_string()] } else { columns };
+        let columns = if columns.is_empty() { vec!["(no columns)".to_string()] } else { columns };
         Ok(Records { columns, rows: rows_vec })
     }
 }
