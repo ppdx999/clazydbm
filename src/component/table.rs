@@ -126,8 +126,8 @@ impl Component for TableComponent {
 
     fn draw(&self, f: &mut Frame, area: Rect, focused: bool) {
         if let Some(table_info) = &self.table_info {
-            // Create tabs
-            let tabs = vec!["Records", "SQL", "Properties"];
+            // Create tabs with hotkey hints (1/2/3)
+            let tabs = vec!["Records [1]", "SQL [2]", "Properties [3]"];
             let selected_tab = match self.focus {
                 TableFocus::Records => 0,
                 TableFocus::SQL => 1,
