@@ -1,7 +1,7 @@
 use std::sync::mpsc::Sender;
 
 use crate::app::AppMsg;
-use crate::component::{ConnectionMsg, DBListMsg, DashboardMsg, RootMsg, TableMsg};
+use crate::component::{ConnectionMsg, DashboardMsg, DBListMsg, RootMsg, TableMsg};
 
 pub enum Command {
     None,
@@ -122,3 +122,4 @@ impl<M> MapMsg<M> for Update<M> {
         }
     }
 }
+

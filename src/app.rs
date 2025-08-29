@@ -1,6 +1,6 @@
-use crate::cmd::Command;
-use crate::cmd::MapMsg;
-use crate::cmd::Update;
+use crate::update::Command;
+use crate::update::MapMsg;
+use crate::update::Update;
 use crate::component::ConnectionMsg;
 use crate::component::{Component, DBListMsg, DashboardMsg, RootComponent, RootMsg, TableMsg};
 use crossterm::event::KeyModifiers;

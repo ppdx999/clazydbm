@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 use super::Component;
-use crate::{cmd::Update, db::DBBehavior};
+use crate::{update::Update, db::DBBehavior};
 use crate::{connection::Connection, connection::load_connections, db::DB};
 
 pub enum ConnectionMsg {

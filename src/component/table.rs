@@ -8,7 +8,7 @@ use ratatui::{
 
 use super::Component;
 use crate::app::AppMsg;
-use crate::cmd::{Command, Update};
+use crate::update::{Command, Update};
 use crate::connection::Connection;
 use crate::db::{DB, DBBehavior, Records};
 use crate::logger::{debug, error};

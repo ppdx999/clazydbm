@@ -1,4 +1,4 @@
-use crate::cmd::{MapMsg, Update};
+use crate::update::{MapMsg, Update};
 use crate::component::{
     Component, ConnectionComponent, ConnectionMsg, DashboardComponent, DashboardMsg,
 };

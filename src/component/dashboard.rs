@@ -8,7 +8,7 @@ use ratatui::{
 
 use super::{Component, DBListComponent, DBListMsg, TableComponent, TableMsg};
 use crate::{
-    cmd::{Command, MapMsg, Update},
+    update::{Command, MapMsg, Update},
     connection::Connection,
     logger::error,
 };

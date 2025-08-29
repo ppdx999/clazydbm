@@ -1,7 +1,7 @@
 use crossterm::event::KeyEvent;
 use ratatui::{Frame, layout::Rect};
 
-use crate::cmd::Update;
+use crate::update::Update;
 
 mod connection;
 mod dashboard;

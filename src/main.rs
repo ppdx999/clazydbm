@@ -1,5 +1,5 @@
 mod app;
-mod cmd;
+mod update;
 mod component;
 mod config;
 mod connection;
