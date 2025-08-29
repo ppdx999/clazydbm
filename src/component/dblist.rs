@@ -8,10 +8,10 @@ use ratatui::{
 };
 
 use super::Component;
-use crate::app::AppMsg;
 use crate::cmd::{Command, Update};
 use crate::db::DBBehavior;
 use crate::logger::{error, info};
+use crate::{app::AppMsg, db::DB};
 use crate::{connection::Connection, db};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -69,10 +69,14 @@ pub enum DBListMsg {
     Expand,
     Fold,
     SelectTable { database: String, table: String },
+    ToggleExpand,
     Filter,
     Load(Connection),
     Loaded(Vec<Database>),
     LoadFailed(String),
+    FilterPush(char),
+    FilterPop,
+    FilterConfirm,
 }
 
 pub enum Focus {
@@ -279,6 +283,21 @@ impl DBListComponent {
         self.rebuild_flat_list();
         Update::none()
     }
+
+    fn move_focus_to_filter(&mut self) {
+        self.focus = Focus::Filter;
+    }
+
+    fn move_focus_to_tree(&mut self) {
+        self.focus = Focus::Tree;
+    }
+
+    fn push_filter_char(&mut self, c: char) {
+        self.filter_query.push(c);
+    }
+    fn pop_filter_char(&mut self) {
+        self.filter_query.pop();
+    }
 }
 
 impl Component for DBListComponent {
@@ -295,15 +314,20 @@ impl Component for DBListComponent {
             DBListMsg::MoveBottom => self.move_bottom().into(),
             DBListMsg::Expand => self.toggle_expand().into(),
             DBListMsg::Fold => self.toggle_expand().into(),
-            DBListMsg::Filter => {
-                self.focus = Focus::Filter;
-                Update::none()
-            }
-            _ => Update::none(),
+            DBListMsg::Filter => self.move_focus_to_filter().into(),
+            DBListMsg::LeaveDashboard => Update::none(), // Handled by parent
+            DBListMsg::ToggleExpand => self.toggle_expand().into(),
+            DBListMsg::SelectTable {
+                database: _,
+                table: _,
+            } => Update::none(), // Handled by parent
+            DBListMsg::FilterPush(c) => self.push_filter_char(c).into(),
+            DBListMsg::FilterPop => self.pop_filter_char().into(),
+            DBListMsg::FilterConfirm => self.move_focus_to_tree().into(),
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
+    fn handle_key(&self, key: KeyEvent) -> Update<Self::Msg> {
         use crossterm::event::KeyCode::*;
 
         match self.focus {
@@ -317,46 +341,34 @@ impl Component for DBListComponent {
                 Char('/') => DBListMsg::Filter.into(),
                 Esc => DBListMsg::LeaveDashboard.into(),
                 Enter => {
-                    if let Some(node) = self.selected_node() {
-                        match &node.node_type {
-                            FlatNodeType::Table {
-                                database, table, ..
-                            } => {
-                                return DBListMsg::SelectTable {
-                                    database: database.clone(),
-                                    table: table.clone(),
-                                }
-                                .into();
-                            }
-                            FlatNodeType::Database(_) | FlatNodeType::Schema { .. } => {
-                                // Expand/collapse on Enter for databases and schemas
-                                self.toggle_expand();
-                            }
-                        }
+                    let Some(node) = self.selected_node() else {
+                        return Update::none();
+                    };
+                    match &node.node_type {
+                        FlatNodeType::Table {
+                            database, table, ..
+                        } => DBListMsg::SelectTable {
+                            database: database.clone(),
+                            table: table.clone(),
+                        },
+                        // Expand/collapse on Enter for databases and schemas
+                        FlatNodeType::Database(_) => DBListMsg::ToggleExpand,
+                        FlatNodeType::Schema { .. } => DBListMsg::ToggleExpand,
                     }
-                    Update::none()
+                    .into()
                 }
                 _ => Update::none(),
             },
             Focus::Filter => match key.code {
-                Enter | Esc => {
-                    self.focus = Focus::Tree;
-                    Update::none()
-                }
-                Char(c) => {
-                    self.filter_query.push(c);
-                    Update::none()
-                }
-                Backspace => {
-                    self.filter_query.pop();
-                    Update::none()
-                }
+                Esc => DBListMsg::FilterConfirm.into(),
+                Char(c) => DBListMsg::FilterPush(c).into(),
+                Backspace => DBListMsg::FilterPop.into(),
                 _ => Update::none(),
             },
         }
     }
 
-    fn draw(&mut self, f: &mut Frame, area: Rect, focused: bool) {
+    fn draw(&self, f: &mut Frame, area: Rect, focused: bool) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0), Constraint::Length(3)])

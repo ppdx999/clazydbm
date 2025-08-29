@@ -32,6 +32,16 @@ impl ConnectionComponent {
     fn selected_connection(&self) -> Option<&Connection> {
         self.items.get(self.selected)
     }
+    fn move_up(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = self.selected.saturating_sub(1);
+        }
+    }
+    fn move_down(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = (self.selected + 1).min(self.items.len() - 1);
+        }
+    }
 }
 
 impl Component for ConnectionComponent {
@@ -39,28 +49,17 @@ impl Component for ConnectionComponent {
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
         match msg {
-            ConnectionMsg::MoveUp => {
-                if !self.items.is_empty() {
-                    self.selected = self.selected.saturating_sub(1);
-                }
-                Update::none()
-            }
-            ConnectionMsg::MoveDown => {
-                if !self.items.is_empty() {
-                    self.selected = (self.selected + 1).min(self.items.len() - 1);
-                }
-                Update::none()
-            }
-            _ => Update::none(),
+            ConnectionMsg::MoveUp => self.move_up().into(),
+            ConnectionMsg::MoveDown => self.move_down().into(),
+            ConnectionMsg::ConnectionSelected(_) => Update::none(), // Handled by parent
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
+    fn handle_key(&self, key: KeyEvent) -> Update<Self::Msg> {
         use crossterm::event::KeyCode::*;
         match key.code {
             Enter => match self.selected_connection() {
                 Some(conn) => ConnectionMsg::ConnectionSelected(conn.clone()).into(),
-                // TODO: Set error state to show in UI
                 None => Update::none(),
             },
             Up | Char('k') => ConnectionMsg::MoveUp.into(),
@@ -69,7 +68,7 @@ impl Component for ConnectionComponent {
         }
     }
 
-    fn draw(&mut self, f: &mut Frame, area: Rect, _focused: bool) {
+    fn draw(&self, f: &mut Frame, area: Rect, _focused: bool) {
         let outer = Layout::default()
             .direction(Direction::Vertical)
             .constraints([

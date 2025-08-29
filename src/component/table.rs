@@ -24,6 +24,7 @@ pub enum TableMsg {
     FocusSQL,
     FocusProperties,
     BackToDBList,
+    TableSelected { database: String, table: String },
     LoadRecords(Connection),
     RecordsLoaded(Records),
     RecordsLoadFailed(String),
@@ -51,11 +52,11 @@ impl TableComponent {
         }
     }
 
-    pub fn set_table(&mut self, database: String, table: String) {
+    fn set_table(&mut self, database: String, table: String) {
         self.table_info = Some(TableInfo { database, table });
     }
 
-    pub fn get_table_info(&self) -> Option<&TableInfo> {
+    fn get_table_info(&self) -> Option<&TableInfo> {
         self.table_info.as_ref()
     }
 }
@@ -78,6 +79,11 @@ impl Component for TableComponent {
                 Update::none()
             }
             TableMsg::BackToDBList => TableMsg::BackToDBList.into(),
+            TableMsg::TableSelected { database, table } => {
+                self.set_table(database, table);
+                self.records = None; // Clear previous records
+                Update::none()
+            }
             TableMsg::LoadRecords(conn) => {
                 let Some(info) = self.table_info.clone() else {
                     return Update::none();
@@ -104,7 +110,7 @@ impl Component for TableComponent {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
+    fn handle_key(&self, key: KeyEvent) -> Update<Self::Msg> {
         use crossterm::event::KeyCode::*;
 
         match key.code {
@@ -118,7 +124,7 @@ impl Component for TableComponent {
         }
     }
 
-    fn draw(&mut self, f: &mut Frame, area: Rect, focused: bool) {
+    fn draw(&self, f: &mut Frame, area: Rect, focused: bool) {
         if let Some(table_info) = &self.table_info {
             // Create tabs
             let tabs = vec!["Records", "SQL", "Properties"];

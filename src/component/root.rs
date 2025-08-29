@@ -74,14 +74,14 @@ impl Component for RootComponent {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
+    fn handle_key(&self, key: KeyEvent) -> Update<Self::Msg> {
         match self.focus {
             Focus::Connection => self.connection.handle_key(key).map_auto(),
             Focus::Dashboard => self.dashboard.handle_key(key).map_auto(),
         }
     }
 
-    fn draw(&mut self, f: &mut Frame, area: Rect, focused: bool) {
+    fn draw(&self, f: &mut Frame, area: Rect, focused: bool) {
         match self.focus {
             Focus::Connection => self.connection.draw(f, area, focused),
             Focus::Dashboard => self.dashboard.draw(f, area, focused),

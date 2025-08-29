@@ -1,7 +1,7 @@
 use std::sync::mpsc::Sender;
 
 use crate::app::AppMsg;
-use crate::component::{ConnectionMsg, DashboardMsg, DBListMsg, RootMsg, TableMsg};
+use crate::component::{ConnectionMsg, DBListMsg, DashboardMsg, RootMsg, TableMsg};
 
 pub enum Command {
     None,
@@ -96,7 +96,6 @@ impl From<RootMsg> for Update<RootMsg> {
         Update::msg(msg)
     }
 }
-
 
 pub trait MapMsg<M> {
     fn map<ParentMsg>(self, wrap: impl FnOnce(M) -> ParentMsg) -> Update<ParentMsg>;

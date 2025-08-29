@@ -1,3 +1,5 @@
+use std::str::from_utf8_unchecked;
+
 use crossterm::event::KeyEvent;
 use ratatui::{
     Frame,
@@ -6,8 +8,9 @@ use ratatui::{
 
 use super::{Component, DBListComponent, DBListMsg, TableComponent, TableMsg};
 use crate::{
-    cmd::{MapMsg, Update},
+    cmd::{Command, MapMsg, Update},
     connection::Connection,
+    logger::error,
 };
 
 /// Messages the Dashboard component can emit
@@ -70,13 +73,22 @@ impl DashboardComponent {
     }
 
     fn move_to_table(&mut self, database: String, table: String) -> Update<DashboardMsg> {
-        self.table.set_table(database, table);
+        let u = self.table.update(TableMsg::TableSelected {
+            database: database,
+            table: table,
+        });
+        match (u.msg, u.cmd) {
+            (None, Command::None) => {}
+            _ => error("Unexpected msg/cmd from TableMsg::TableSelected"),
+        }
         self.focus = DashboardFocus::Table;
         // Trigger records load using current connection
-        if let Some(conn) = &self.connection {
-            DashboardMsg::TableMsg(TableMsg::LoadRecords(conn.clone())).into()
-        } else {
-            Update::none()
+        match &self.connection {
+            Some(conn) => self
+                .table
+                .update(TableMsg::LoadRecords(conn.clone()))
+                .map_auto(),
+            None => Update::none(),
         }
     }
 
@@ -107,7 +119,7 @@ impl Component for DashboardComponent {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Update<Self::Msg> {
+    fn handle_key(&self, key: KeyEvent) -> Update<Self::Msg> {
         // Forward key to focused component - let update handle side effects
         match self.focus {
             DashboardFocus::DBList => self.dblist.handle_key(key).map_auto(),
@@ -115,7 +127,7 @@ impl Component for DashboardComponent {
         }
     }
 
-    fn draw(&mut self, f: &mut Frame, area: Rect, focused: bool) {
+    fn draw(&self, f: &mut Frame, area: Rect, focused: bool) {
         // Create layout: 15% left (DBList), 85% right (Table)
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
