@@ -19,7 +19,23 @@ INSERT INTO users (name, email) VALUES
   ("Bob", "bob@example.com"),
   ("Carol", "carol@example.com"),
   ("Dave", "dave@example.com"),
-  ("Eve", "eve@example.com");'
+  ("Eve", "eve@example.com");
+
+-- Large table for display/scroll testing
+CREATE TABLE IF NOT EXISTS big_users (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT
+);
+DELETE FROM big_users;
+WITH RECURSIVE seq(x) AS (
+  SELECT 1
+  UNION ALL
+  SELECT x + 1 FROM seq WHERE x < 1000
+)
+INSERT INTO big_users (id, name, email)
+SELECT x, printf("User %04d", x), printf("user%04d@example.com", x)
+FROM seq;'
 
 if command -v sqlite3 >/dev/null 2>&1; then
   echo "[seed-sqlite] Using local sqlite3 CLI"
@@ -43,8 +59,23 @@ INSERT INTO users (name, email) VALUES
   ("Carol", "carol@example.com"),
   ("Dave", "dave@example.com"),
   ("Eve", "eve@example.com");
+
+-- Large table for display/scroll testing
+CREATE TABLE IF NOT EXISTS big_users (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT
+);
+DELETE FROM big_users;
+WITH RECURSIVE seq(x) AS (
+  SELECT 1
+  UNION ALL
+  SELECT x + 1 FROM seq WHERE x < 1000
+)
+INSERT INTO big_users (id, name, email)
+SELECT x, printf("User %04d", x), printf("user%04d@example.com", x)
+FROM seq;
 SQL
 fi
 
 echo "[seed-sqlite] Seeded SQLite at $db_path"
-
