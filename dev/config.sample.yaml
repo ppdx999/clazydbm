@@ -1,0 +1,19 @@
+conn:
+  - type: mysql
+    name: demo-mysql
+    user: root
+    password: rootpass
+    host: 127.0.0.1
+    port: 3306
+    database: demo
+  - type: postgres
+    name: demo-postgres
+    user: postgres
+    password: postgres
+    host: 127.0.0.1
+    port: 5432
+    database: demo
+  - type: sqlite
+    name: demo-sqlite
+    path: dev/sqlite/sample.db
+

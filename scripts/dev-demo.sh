@@ -20,7 +20,7 @@ for i in {1..60}; do
 done
 
 echo "[dev-demo] Seeding SQLite sample DB..."
-cargo run --quiet --bin seed_sqlite
+"$repo_root/scripts/seed-sqlite.sh"
 
 cfg_dir=${XDG_CONFIG_HOME:-$HOME/.config}/clazydbm
 mkdir -p "$cfg_dir"
@@ -45,5 +45,5 @@ conn:
     path: dev/sqlite/sample.db
 YAML
 
-echo "[dev-demo] Launching clazydbm..."
-cargo run
+# echo "[dev-demo] Launching clazydbm..."
+# cargo run
