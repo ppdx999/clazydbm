@@ -15,6 +15,10 @@ pub enum ConnectionMsg {
     ConnectionSelected(Connection),
     MoveUp,
     MoveDown,
+    MoveTop,
+    MoveBottom,
+    MovePageUp,
+    MovePageDown,
 }
 
 pub struct ConnectionComponent {
@@ -42,6 +46,26 @@ impl ConnectionComponent {
             self.selected = (self.selected + 1).min(self.items.len() - 1);
         }
     }
+    fn move_top(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = 0;
+        }
+    }
+    fn move_bottom(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = self.items.len() - 1;
+        }
+    }
+    fn move_page_up(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = self.selected.saturating_sub(10);
+        }
+    }
+    fn move_page_down(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = (self.selected + 10).min(self.items.len() - 1);
+        }
+    }
 }
 
 impl Component for ConnectionComponent {
@@ -51,6 +75,10 @@ impl Component for ConnectionComponent {
         match msg {
             ConnectionMsg::MoveUp => self.move_up().into(),
             ConnectionMsg::MoveDown => self.move_down().into(),
+            ConnectionMsg::MoveTop => self.move_top().into(),
+            ConnectionMsg::MoveBottom => self.move_bottom().into(),
+            ConnectionMsg::MovePageUp => self.move_page_up().into(),
+            ConnectionMsg::MovePageDown => self.move_page_down().into(),
             ConnectionMsg::ConnectionSelected(_) => Update::none(), // Handled by parent
         }
     }
@@ -64,6 +92,10 @@ impl Component for ConnectionComponent {
             },
             Up | Char('k') => ConnectionMsg::MoveUp.into(),
             Down | Char('j') => ConnectionMsg::MoveDown.into(),
+            PageUp => ConnectionMsg::MovePageUp.into(),
+            PageDown => ConnectionMsg::MovePageDown.into(),
+            Home => ConnectionMsg::MoveTop.into(),
+            End => ConnectionMsg::MoveBottom.into(),
             _ => Update::none(),
         }
     }
@@ -95,10 +127,22 @@ impl Component for ConnectionComponent {
         );
         let block = Block::default().title(title).borders(Borders::ALL);
 
-        let items: Vec<ListItem> = if self.items.is_empty() {
+        // Determine visible window based on available height
+        let border_rows = 2u16; // top+bottom borders
+        let avail = inner.height.saturating_sub(border_rows);
+        let visible = usize::try_from(avail).unwrap_or(0).max(1);
+        let total = self.items.len();
+        let start = if total <= visible {
+            0
+        } else {
+            self.selected.saturating_add(1).saturating_sub(visible)
+        };
+        let end = (start + visible).min(total);
+
+        let items: Vec<ListItem> = if total == 0 {
             vec![ListItem::new("(no connections found)")]
         } else {
-            self.items
+            self.items[start..end]
                 .iter()
                 .map(|c| {
                     ListItem::new(Span::raw(format!(
@@ -120,10 +164,10 @@ impl Component for ConnectionComponent {
             .highlight_symbol("▶ ");
 
         let mut state = ListState::default();
-        if !self.items.is_empty() {
-            state.select(Some(self.selected));
+        if total > 0 {
+            // Adjust the selection index within the window
+            state.select(Some(self.selected - start));
         }
-
         f.render_stateful_widget(list, inner, &mut state);
     }
 }
