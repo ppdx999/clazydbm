@@ -34,6 +34,10 @@ pub enum TableMsg {
     ScrollRecordsBy(i32),
     ScrollTop,
     ScrollBottom,
+    // Horizontal column paging for Records view
+    ScrollColsBy(i32),
+    ColsStart,
+    ColsEnd,
     // Scrolling controls for Properties view
     ScrollPropsBy(i32),
     ScrollPropsTop,
@@ -53,6 +57,7 @@ pub struct TableComponent {
     records: Option<Records>,
     properties: Option<TableProperties>,
     records_scroll: usize,
+    records_col_scroll: usize,
     properties_scroll: usize,
 }
 
@@ -64,6 +69,7 @@ impl TableComponent {
             records: None,
             properties: None,
             records_scroll: 0,
+            records_col_scroll: 0,
             properties_scroll: 0,
         }
     }
@@ -73,6 +79,7 @@ impl TableComponent {
         self.records = None;
         self.properties = None;
         self.records_scroll = 0;
+        self.records_col_scroll = 0;
         self.properties_scroll = 0;
     }
 
@@ -120,6 +127,7 @@ impl Component for TableComponent {
             TableMsg::RecordsLoaded(recs) => {
                 self.records = Some(recs);
                 self.records_scroll = 0;
+                self.records_col_scroll = 0;
                 Update::none()
             }
             TableMsg::RecordsLoadFailed(_e) => Update::none(),
@@ -167,6 +175,32 @@ impl Component for TableComponent {
                 if matches!(self.focus, TableFocus::Records) {
                     // Will be clamped in draw
                     self.records_scroll = usize::MAX / 2;
+                }
+                Update::none()
+            }
+            TableMsg::ScrollColsBy(delta) => {
+                if matches!(self.focus, TableFocus::Records) {
+                    if delta < 0 {
+                        self.records_col_scroll = self
+                            .records_col_scroll
+                            .saturating_sub((-delta) as usize);
+                    } else if delta > 0 {
+                        self.records_col_scroll = self
+                            .records_col_scroll
+                            .saturating_add(delta as usize);
+                    }
+                }
+                Update::none()
+            }
+            TableMsg::ColsStart => {
+                if matches!(self.focus, TableFocus::Records) {
+                    self.records_col_scroll = 0;
+                }
+                Update::none()
+            }
+            TableMsg::ColsEnd => {
+                if matches!(self.focus, TableFocus::Records) {
+                    self.records_col_scroll = usize::MAX / 2;
                 }
                 Update::none()
             }
@@ -248,6 +282,19 @@ impl Component for TableComponent {
                     TableMsg::ScrollBottom.into()
                 }
             }
+            // Horizontal column paging in Records tab
+            Left | Char('h') => TableMsg::ScrollColsBy(-1).into(),
+            Right | Char('l') => TableMsg::ScrollColsBy(1).into(),
+            // Jump columns by 5 using '[' and ']'
+            Char('[') => TableMsg::ScrollColsBy(-5).into(),
+            Char(']') => TableMsg::ScrollColsBy(5).into(),
+            // Go to first/last column with Ctrl-A / Ctrl-E
+            Char('a') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                TableMsg::ColsStart.into()
+            }
+            Char('e') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                TableMsg::ColsEnd.into()
+            }
             Char('k') => {
                 if matches!(self.focus, TableFocus::Properties) {
                     TableMsg::ScrollPropsBy(-1).into()
@@ -317,11 +364,21 @@ impl Component for TableComponent {
                 TableFocus::Records => {
                     if let Some(recs) = &self.records {
                         use ratatui::widgets::{Cell as TuiCell, Row, Table as TuiTable};
-                        let header = Row::new(recs.columns.iter().map(|c| {
+                        // Determine visible columns based on width and horizontal scroll
+                        let border_cols = 2u16; // left+right border
+                        let col_width: u16 = 16; // fixed column width for rendering
+                        let avail_w = content_area.width.saturating_sub(border_cols);
+                        let visible_cols = std::cmp::max(1u16, avail_w / col_width) as usize;
+                        let total_cols = recs.columns.len();
+                        let max_col_start = total_cols.saturating_sub(visible_cols);
+                        let col_start = self.records_col_scroll.min(max_col_start);
+                        let col_end = (col_start + visible_cols).min(total_cols);
+
+                        let header = Row::new(recs.columns[col_start..col_end].iter().map(|c| {
                             TuiCell::from(c.as_str())
                                 .style(Style::default().add_modifier(Modifier::BOLD))
                         }));
-                        // Compute visible slice based on area height and scroll offset
+                        // Compute visible rows slice based on area height and scroll offset
                         let border_rows = 2u16; // top+bottom border
                         let header_rows = 1u16; // header row
                         let avail = content_area
@@ -335,18 +392,15 @@ impl Component for TableComponent {
                         let end = start.saturating_add(visible_count).min(total);
                         let rows = recs.rows[start..end]
                             .iter()
-                            .map(|r| Row::new(r.iter().map(|v| v.as_str())));
-                        let widths: Vec<Constraint> = recs
-                            .columns
-                            .iter()
-                            .map(|_| Constraint::Length(20))
+                            .map(|r| Row::new(r[col_start..col_end].iter().map(|v| v.as_str())));
+                        let widths: Vec<Constraint> = (col_start..col_end)
+                            .map(|_| Constraint::Length(col_width))
                             .collect();
                         let title = if total > 0 && visible_count > 0 {
                             format!(
-                                "Records  [{}-{} / {}]  (↑/↓, PgUp/PgDn, Home/End)",
-                                start.saturating_add(1),
-                                end,
-                                total
+                                "Records  rows [{}-{} / {}], cols [{}-{} / {}]  (↑/↓, PgUp/PgDn, Home/End; ←/→, [/], Ctrl-A/E)",
+                                start.saturating_add(1), end, total,
+                                col_start.saturating_add(1), col_end, total_cols
                             )
                         } else {
                             "Records".to_string()
