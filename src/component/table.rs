@@ -8,10 +8,10 @@ use ratatui::{
 
 use super::Component;
 use crate::app::AppMsg;
-use crate::update::{Command, Update};
 use crate::connection::Connection;
 use crate::db::{DB, DBBehavior, Records, TableProperties};
 use crate::logger::{debug, error};
+use crate::update::{Command, Update};
 
 #[derive(Debug, Clone)]
 pub struct TableInfo {
@@ -30,6 +30,10 @@ pub enum TableMsg {
     LoadProperties(Connection),
     PropertiesLoaded(TableProperties),
     PropertiesLoadFailed(String),
+    // Scrolling controls for Records view
+    ScrollRecordsBy(i32),
+    ScrollTop,
+    ScrollBottom,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,6 +48,7 @@ pub struct TableComponent {
     focus: TableFocus,
     records: Option<Records>,
     properties: Option<TableProperties>,
+    records_scroll: usize,
 }
 
 impl TableComponent {
@@ -53,6 +58,7 @@ impl TableComponent {
             focus: TableFocus::Records,
             records: None,
             properties: None,
+            records_scroll: 0,
         }
     }
 
@@ -60,6 +66,7 @@ impl TableComponent {
         self.table_info = Some(TableInfo { database, table });
         self.records = None;
         self.properties = None;
+        self.records_scroll = 0;
     }
 
     fn get_table_info(&self) -> Option<&TableInfo> {
@@ -105,11 +112,14 @@ impl Component for TableComponent {
             }
             TableMsg::RecordsLoaded(recs) => {
                 self.records = Some(recs);
+                self.records_scroll = 0;
                 Update::none()
             }
             TableMsg::RecordsLoadFailed(_e) => Update::none(),
             TableMsg::LoadProperties(conn) => {
-                let Some(info) = self.table_info.clone() else { return Update::none(); };
+                let Some(info) = self.table_info.clone() else {
+                    return Update::none();
+                };
                 debug(&format!("Props: loading {}.{}", info.database, info.table));
                 let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
                     let res = DB::fetch_properties(&conn, &info.database, &info.table);
@@ -129,6 +139,29 @@ impl Component for TableComponent {
                 Update::none()
             }
             TableMsg::PropertiesLoadFailed(_e) => Update::none(),
+            TableMsg::ScrollRecordsBy(delta) => {
+                if matches!(self.focus, TableFocus::Records) {
+                    if delta < 0 {
+                        self.records_scroll = self.records_scroll.saturating_sub((-delta) as usize);
+                    } else if delta > 0 {
+                        self.records_scroll = self.records_scroll.saturating_add(delta as usize);
+                    }
+                }
+                Update::none()
+            }
+            TableMsg::ScrollTop => {
+                if matches!(self.focus, TableFocus::Records) {
+                    self.records_scroll = 0;
+                }
+                Update::none()
+            }
+            TableMsg::ScrollBottom => {
+                if matches!(self.focus, TableFocus::Records) {
+                    // Will be clamped in draw
+                    self.records_scroll = usize::MAX / 2;
+                }
+                Update::none()
+            }
         }
     }
 
@@ -142,6 +175,15 @@ impl Component for TableComponent {
             Char('3') => TableMsg::FocusProperties.into(),
             // Back to DBList focus
             Tab | Esc => TableMsg::BackToDBList.into(),
+            // Scrolling shortcuts for Records view
+            Up => TableMsg::ScrollRecordsBy(-1).into(),
+            Down => TableMsg::ScrollRecordsBy(1).into(),
+            PageUp => TableMsg::ScrollRecordsBy(-10).into(),
+            PageDown => TableMsg::ScrollRecordsBy(10).into(),
+            Home => TableMsg::ScrollTop.into(),
+            End => TableMsg::ScrollBottom.into(),
+            Char('k') => TableMsg::ScrollRecordsBy(-1).into(),
+            Char('j') => TableMsg::ScrollRecordsBy(1).into(),
             _ => Update::none(),
         }
     }
@@ -201,8 +243,19 @@ impl Component for TableComponent {
                             TuiCell::from(c.as_str())
                                 .style(Style::default().add_modifier(Modifier::BOLD))
                         }));
-                        let rows = recs
-                            .rows
+                        // Compute visible slice based on area height and scroll offset
+                        let border_rows = 2u16; // top+bottom border
+                        let header_rows = 1u16; // header row
+                        let avail = content_area
+                            .height
+                            .saturating_sub(border_rows)
+                            .saturating_sub(header_rows);
+                        let visible_count = usize::try_from(avail).unwrap_or(0);
+                        let total = recs.rows.len();
+                        let max_start = total.saturating_sub(visible_count);
+                        let start = self.records_scroll.min(max_start);
+                        let end = start.saturating_add(visible_count).min(total);
+                        let rows = recs.rows[start..end]
                             .iter()
                             .map(|r| Row::new(r.iter().map(|v| v.as_str())));
                         let widths: Vec<Constraint> = recs
@@ -210,9 +263,19 @@ impl Component for TableComponent {
                             .iter()
                             .map(|_| Constraint::Length(20))
                             .collect();
+                        let title = if total > 0 && visible_count > 0 {
+                            format!(
+                                "Records  [{}-{} / {}]  (↑/↓, PgUp/PgDn, Home/End)",
+                                start.saturating_add(1),
+                                end,
+                                total
+                            )
+                        } else {
+                            "Records".to_string()
+                        };
                         let table = TuiTable::new(rows, widths).header(header).block(
                             Block::default()
-                                .title("Records")
+                                .title(title)
                                 .borders(Borders::ALL)
                                 .border_style(content_style),
                         );
@@ -244,11 +307,16 @@ impl Component for TableComponent {
                     if let Some(props) = &self.properties {
                         use ratatui::widgets::{Cell as TuiCell, Row, Table as TuiTable};
                         let header = Row::new([
-                            TuiCell::from("Column").style(Style::default().add_modifier(Modifier::BOLD)),
-                            TuiCell::from("Type").style(Style::default().add_modifier(Modifier::BOLD)),
-                            TuiCell::from("Null").style(Style::default().add_modifier(Modifier::BOLD)),
-                            TuiCell::from("Default").style(Style::default().add_modifier(Modifier::BOLD)),
-                            TuiCell::from("PK").style(Style::default().add_modifier(Modifier::BOLD)),
+                            TuiCell::from("Column")
+                                .style(Style::default().add_modifier(Modifier::BOLD)),
+                            TuiCell::from("Type")
+                                .style(Style::default().add_modifier(Modifier::BOLD)),
+                            TuiCell::from("Null")
+                                .style(Style::default().add_modifier(Modifier::BOLD)),
+                            TuiCell::from("Default")
+                                .style(Style::default().add_modifier(Modifier::BOLD)),
+                            TuiCell::from("PK")
+                                .style(Style::default().add_modifier(Modifier::BOLD)),
                         ]);
                         let rows = props.columns.iter().map(|c| {
                             Row::new([
@@ -266,22 +334,20 @@ impl Component for TableComponent {
                             Constraint::Length(24),
                             Constraint::Length(4),
                         ];
-                        let table = TuiTable::new(rows, widths)
-                            .header(header)
-                            .block(
-                                Block::default()
-                                    .title("Properties")
-                                    .borders(Borders::ALL)
-                                    .border_style(content_style),
-                            );
+                        let table = TuiTable::new(rows, widths).header(header).block(
+                            Block::default()
+                                .title("Properties")
+                                .borders(Borders::ALL)
+                                .border_style(content_style),
+                        );
                         f.render_widget(table, content_area);
                     } else {
                         let properties_block = Block::default()
                             .title("Properties")
                             .borders(Borders::ALL)
                             .border_style(content_style);
-                        let properties_content = Paragraph::new("Loading properties...")
-                            .block(properties_block);
+                        let properties_content =
+                            Paragraph::new("Loading properties...").block(properties_block);
                         f.render_widget(properties_content, content_area);
                     }
                 }
