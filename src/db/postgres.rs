@@ -159,15 +159,19 @@ impl DBBehavior for Postgres {
             })
             .collect();
 
-        // primary key columns
+        // primary key columns (use information_schema to avoid regclass parameter typing issues)
         let pk_rows = client.query(
-            "SELECT a.attname
-             FROM   pg_index i
-             JOIN   pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-             WHERE  i.indrelid = $1::regclass AND i.indisprimary",
+            "SELECT kcu.column_name
+             FROM information_schema.table_constraints tc
+             JOIN information_schema.key_column_usage kcu
+               ON tc.constraint_name = kcu.constraint_name
+              AND tc.table_schema = kcu.table_schema
+             WHERE tc.constraint_type = 'PRIMARY KEY'
+               AND tc.table_name = $1",
             &[&table],
         )?;
-        let pk: std::collections::HashSet<String> = pk_rows.into_iter().map(|r| r.get::<_, String>(0)).collect();
+        let pk: std::collections::HashSet<String> =
+            pk_rows.into_iter().map(|r| r.get::<_, String>(0)).collect();
         for c in &mut columns {
             if pk.contains(&c.name) {
                 c.primary_key = true;
