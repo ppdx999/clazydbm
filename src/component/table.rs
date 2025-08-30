@@ -34,6 +34,10 @@ pub enum TableMsg {
     ScrollRecordsBy(i32),
     ScrollTop,
     ScrollBottom,
+    // Scrolling controls for Properties view
+    ScrollPropsBy(i32),
+    ScrollPropsTop,
+    ScrollPropsBottom,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +53,7 @@ pub struct TableComponent {
     records: Option<Records>,
     properties: Option<TableProperties>,
     records_scroll: usize,
+    properties_scroll: usize,
 }
 
 impl TableComponent {
@@ -59,6 +64,7 @@ impl TableComponent {
             records: None,
             properties: None,
             records_scroll: 0,
+            properties_scroll: 0,
         }
     }
 
@@ -67,6 +73,7 @@ impl TableComponent {
         self.records = None;
         self.properties = None;
         self.records_scroll = 0;
+        self.properties_scroll = 0;
     }
 
     fn get_table_info(&self) -> Option<&TableInfo> {
@@ -136,6 +143,7 @@ impl Component for TableComponent {
             }
             TableMsg::PropertiesLoaded(props) => {
                 self.properties = Some(props);
+                self.properties_scroll = 0;
                 Update::none()
             }
             TableMsg::PropertiesLoadFailed(_e) => Update::none(),
@@ -162,6 +170,28 @@ impl Component for TableComponent {
                 }
                 Update::none()
             }
+            TableMsg::ScrollPropsBy(delta) => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    if delta < 0 {
+                        self.properties_scroll = self.properties_scroll.saturating_sub((-delta) as usize);
+                    } else if delta > 0 {
+                        self.properties_scroll = self.properties_scroll.saturating_add(delta as usize);
+                    }
+                }
+                Update::none()
+            }
+            TableMsg::ScrollPropsTop => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    self.properties_scroll = 0;
+                }
+                Update::none()
+            }
+            TableMsg::ScrollPropsBottom => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    self.properties_scroll = usize::MAX / 2;
+                }
+                Update::none()
+            }
         }
     }
 
@@ -175,15 +205,63 @@ impl Component for TableComponent {
             Char('3') => TableMsg::FocusProperties.into(),
             // Back to DBList focus
             Tab | Esc => TableMsg::BackToDBList.into(),
-            // Scrolling shortcuts for Records view
-            Up => TableMsg::ScrollRecordsBy(-1).into(),
-            Down => TableMsg::ScrollRecordsBy(1).into(),
-            PageUp => TableMsg::ScrollRecordsBy(-10).into(),
-            PageDown => TableMsg::ScrollRecordsBy(10).into(),
-            Home => TableMsg::ScrollTop.into(),
-            End => TableMsg::ScrollBottom.into(),
-            Char('k') => TableMsg::ScrollRecordsBy(-1).into(),
-            Char('j') => TableMsg::ScrollRecordsBy(1).into(),
+            // Scrolling shortcuts: route based on focus
+            Up => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsBy(-1).into()
+                } else {
+                    TableMsg::ScrollRecordsBy(-1).into()
+                }
+            }
+            Down => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsBy(1).into()
+                } else {
+                    TableMsg::ScrollRecordsBy(1).into()
+                }
+            }
+            PageUp => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsBy(-10).into()
+                } else {
+                    TableMsg::ScrollRecordsBy(-10).into()
+                }
+            }
+            PageDown => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsBy(10).into()
+                } else {
+                    TableMsg::ScrollRecordsBy(10).into()
+                }
+            }
+            Home => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsTop.into()
+                } else {
+                    TableMsg::ScrollTop.into()
+                }
+            }
+            End => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsBottom.into()
+                } else {
+                    TableMsg::ScrollBottom.into()
+                }
+            }
+            Char('k') => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsBy(-1).into()
+                } else {
+                    TableMsg::ScrollRecordsBy(-1).into()
+                }
+            }
+            Char('j') => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsBy(1).into()
+                } else {
+                    TableMsg::ScrollRecordsBy(1).into()
+                }
+            }
             _ => Update::none(),
         }
     }
@@ -318,7 +396,19 @@ impl Component for TableComponent {
                             TuiCell::from("PK")
                                 .style(Style::default().add_modifier(Modifier::BOLD)),
                         ]);
-                        let rows = props.columns.iter().map(|c| {
+                        // Visible slice based on height and properties_scroll
+                        let border_rows = 2u16;
+                        let header_rows = 1u16;
+                        let avail = content_area
+                            .height
+                            .saturating_sub(border_rows)
+                            .saturating_sub(header_rows);
+                        let visible_count = usize::try_from(avail).unwrap_or(0);
+                        let total = props.columns.len();
+                        let max_start = total.saturating_sub(visible_count);
+                        let start = self.properties_scroll.min(max_start);
+                        let end = start.saturating_add(visible_count).min(total);
+                        let rows = props.columns[start..end].iter().map(|c| {
                             Row::new([
                                 c.name.as_str(),
                                 c.data_type.as_str(),
@@ -334,12 +424,24 @@ impl Component for TableComponent {
                             Constraint::Length(24),
                             Constraint::Length(4),
                         ];
-                        let table = TuiTable::new(rows, widths).header(header).block(
-                            Block::default()
-                                .title("Properties")
-                                .borders(Borders::ALL)
-                                .border_style(content_style),
-                        );
+                        let title = if total > 0 && visible_count > 0 {
+                            format!(
+                                "Properties  [{}-{} / {}]  (↑/↓, PgUp/PgDn, Home/End)",
+                                start.saturating_add(1),
+                                end,
+                                total
+                            )
+                        } else {
+                            "Properties".to_string()
+                        };
+                        let table = TuiTable::new(rows, widths)
+                            .header(header)
+                            .block(
+                                Block::default()
+                                    .title(title)
+                                    .borders(Borders::ALL)
+                                    .border_style(content_style),
+                            );
                         f.render_widget(table, content_area);
                     } else {
                         let properties_block = Block::default()
