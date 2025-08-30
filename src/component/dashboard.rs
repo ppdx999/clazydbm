@@ -75,7 +75,7 @@ impl DashboardComponent {
         if let Some(conn) = &self.connection {
             DashboardMsg::TableMsg(TableMsg::LoadRecords(conn.clone())).into()
         } else {
-            ().into()
+            Update::none()
         }
     }
 
@@ -108,7 +108,7 @@ impl Component for DashboardComponent {
                 if let Some(conn) = &self.connection {
                     DashboardMsg::TableMsg(TableMsg::LoadProperties(conn.clone())).into()
                 } else {
-                    ().into()
+                    Update::none()
                 }
             }
             DashboardMsg::TableMsg(m) => self.table.update(m).map_auto(),

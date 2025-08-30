@@ -308,22 +308,22 @@ impl Component for DBListComponent {
             DBListMsg::Load(conn) => Command::Spawn(Box::new(Self::on_load(conn))).into(),
             DBListMsg::Loaded(dbs) => self.on_loaded(dbs),
             DBListMsg::LoadFailed(_err) => Update::none(),
-            DBListMsg::MoveUp => self.move_up().into(),
-            DBListMsg::MoveDown => self.move_down().into(),
-            DBListMsg::MoveTop => self.move_top().into(),
-            DBListMsg::MoveBottom => self.move_bottom().into(),
-            DBListMsg::Expand => self.toggle_expand().into(),
-            DBListMsg::Fold => self.toggle_expand().into(),
-            DBListMsg::Filter => self.move_focus_to_filter().into(),
+            DBListMsg::MoveUp => { self.move_up(); Update::none() },
+            DBListMsg::MoveDown => { self.move_down(); Update::none() },
+            DBListMsg::MoveTop => { self.move_top(); Update::none() },
+            DBListMsg::MoveBottom => { self.move_bottom(); Update::none() },
+            DBListMsg::Expand => { self.toggle_expand(); Update::none() },
+            DBListMsg::Fold => { self.toggle_expand(); Update::none() },
+            DBListMsg::Filter => { self.move_focus_to_filter(); Update::none() },
             DBListMsg::LeaveDashboard => Update::none(), // Handled by parent
-            DBListMsg::ToggleExpand => self.toggle_expand().into(),
+            DBListMsg::ToggleExpand => { self.toggle_expand(); Update::none() },
             DBListMsg::SelectTable {
                 database: _,
                 table: _,
             } => Update::none(), // Handled by parent
-            DBListMsg::FilterPush(c) => self.push_filter_char(c).into(),
-            DBListMsg::FilterPop => self.pop_filter_char().into(),
-            DBListMsg::FilterConfirm => self.move_focus_to_tree().into(),
+            DBListMsg::FilterPush(c) => { self.push_filter_char(c); Update::none() },
+            DBListMsg::FilterPop => { self.pop_filter_char(); Update::none() },
+            DBListMsg::FilterConfirm => { self.move_focus_to_tree(); Update::none() },
         }
     }
 
