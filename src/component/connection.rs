@@ -49,14 +49,8 @@ impl Component for ConnectionComponent {
 
     fn update(&mut self, msg: Self::Msg) -> Update<Self::Msg> {
         match msg {
-            ConnectionMsg::MoveUp => {
-                self.move_up();
-                Update::none()
-            }
-            ConnectionMsg::MoveDown => {
-                self.move_down();
-                Update::none()
-            }
+            ConnectionMsg::MoveUp => self.move_up().into(),
+            ConnectionMsg::MoveDown => self.move_down().into(),
             ConnectionMsg::ConnectionSelected(_) => Update::none(), // Handled by parent
         }
     }
