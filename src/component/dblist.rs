@@ -11,7 +11,7 @@ use super::Component;
 use crate::update::{Command, Update};
 use crate::db::DBBehavior;
 use crate::logger::{error, info};
-use crate::{app::AppMsg, db::DB};
+use crate::app::AppMsg;
 use crate::{connection::Connection, db};
 
 #[derive(Clone, PartialEq, Debug)]

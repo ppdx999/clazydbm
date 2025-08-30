@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::component::{Child, Database, Table};
 use crate::{connection::Connection, db::DBBehavior};
-use crate::db::Records;
+use crate::db::{Records, ColumnInfo, TableProperties};
 use crate::logger::debug;
 
 pub struct Mysql {}
@@ -134,5 +134,37 @@ impl DBBehavior for Mysql {
         }
 
         Ok(Records { columns, rows: rows_vec })
+    }
+
+    fn fetch_properties(
+        conn: &Connection,
+        database: &str,
+        table: &str,
+    ) -> Result<TableProperties> {
+        use mysql::prelude::*;
+        use mysql::params;
+        let url = Mysql::database_url(conn)?;
+        let opts = mysql::Opts::from_url(&url)?;
+        let mut c = mysql::Conn::new(opts)?;
+
+        let q = r#"
+            SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COLUMN_KEY
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table
+            ORDER BY ORDINAL_POSITION
+        "#;
+        let rows: Vec<(String, String, String, Option<String>, Option<String>)> =
+            c.exec(q, params! { "schema" => database, "table" => table })?;
+        let columns = rows
+            .into_iter()
+            .map(|(name, coltype, is_nullable, default, colkey)| ColumnInfo {
+                name,
+                data_type: coltype,
+                nullable: is_nullable.eq_ignore_ascii_case("YES"),
+                default,
+                primary_key: colkey.as_deref() == Some("PRI"),
+            })
+            .collect();
+        Ok(TableProperties { columns })
     }
 }

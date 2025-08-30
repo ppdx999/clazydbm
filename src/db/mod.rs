@@ -30,6 +30,11 @@ pub trait DBBehavior: Send + Sync {
         limit: usize,
         offset: usize,
     ) -> Result<Records>;
+    fn fetch_properties(
+        conn: &Connection,
+        database: &str,
+        table: &str,
+    ) -> Result<TableProperties>;
 }
 
 pub struct DB;
@@ -62,12 +67,37 @@ impl DBBehavior for DB {
             DatabaseType::Sqlite => Sqlite::fetch_records(conn, database, table, limit, offset),
         }
     }
+    fn fetch_properties(
+        conn: &Connection,
+        database: &str,
+        table: &str,
+    ) -> Result<TableProperties> {
+        match conn.r#type {
+            DatabaseType::MySql => Mysql::fetch_properties(conn, database, table),
+            DatabaseType::Postgres => Postgres::fetch_properties(conn, database, table),
+            DatabaseType::Sqlite => Sqlite::fetch_properties(conn, database, table),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Records {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>, // each inner Vec is a row of stringified values
+}
+
+#[derive(Debug, Clone)]
+pub struct ColumnInfo {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+    pub default: Option<String>,
+    pub primary_key: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TableProperties {
+    pub columns: Vec<ColumnInfo>,
 }
 
 // end

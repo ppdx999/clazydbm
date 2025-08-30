@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::component::{Child, Database, Schema, Table};
 use crate::{connection::Connection, db::DBBehavior};
-use crate::db::Records;
+use crate::db::{Records, ColumnInfo, TableProperties};
 use crate::logger::debug;
 
 pub struct Postgres {}
@@ -127,5 +127,53 @@ impl DBBehavior for Postgres {
 
         let columns = if columns.is_empty() { vec!["(no columns)".to_string()] } else { columns };
         Ok(Records { columns, rows: rows_vec })
+    }
+
+    fn fetch_properties(
+        conn: &Connection,
+        _database: &str,
+        table: &str,
+    ) -> Result<TableProperties> {
+        let url = Postgres::database_url(conn)?;
+        let mut client = postgres::Client::connect(&url, postgres::NoTls)?;
+
+        // columns
+        let cols_rows = client.query(
+            "SELECT column_name, data_type, is_nullable, column_default
+             FROM information_schema.columns
+             WHERE table_name = $1
+             ORDER BY ordinal_position",
+            &[&table],
+        )?;
+        let mut columns: Vec<ColumnInfo> = cols_rows
+            .into_iter()
+            .map(|r| ColumnInfo {
+                name: r.get::<_, String>(0),
+                data_type: r.get::<_, String>(1),
+                nullable: {
+                    let s: String = r.get(2);
+                    s.eq_ignore_ascii_case("YES")
+                },
+                default: r.get::<_, Option<String>>(3),
+                primary_key: false, // fill below
+            })
+            .collect();
+
+        // primary key columns
+        let pk_rows = client.query(
+            "SELECT a.attname
+             FROM   pg_index i
+             JOIN   pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+             WHERE  i.indrelid = $1::regclass AND i.indisprimary",
+            &[&table],
+        )?;
+        let pk: std::collections::HashSet<String> = pk_rows.into_iter().map(|r| r.get::<_, String>(0)).collect();
+        for c in &mut columns {
+            if pk.contains(&c.name) {
+                c.primary_key = true;
+            }
+        }
+
+        Ok(TableProperties { columns })
     }
 }

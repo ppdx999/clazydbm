@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::component::{Child, Database, Table};
 use crate::{connection::Connection, db::DBBehavior};
-use crate::db::Records;
+use crate::db::{Records, ColumnInfo, TableProperties};
 use crate::logger::debug;
 
 pub struct Sqlite {}
@@ -100,6 +100,38 @@ impl DBBehavior for Sqlite {
         }
 
         Ok(Records { columns, rows: rows_vec })
+    }
+
+    fn fetch_properties(
+        conn: &Connection,
+        _database: &str,
+        table: &str,
+    ) -> Result<TableProperties> {
+        use rusqlite::Connection as SqliteConn;
+        let path = conn
+            .path
+            .as_ref()
+            .and_then(|p| expand_path(p))
+            .ok_or_else(|| anyhow::anyhow!("invalid sqlite path"))?;
+        let sc = SqliteConn::open(path)?;
+        let mut stmt = sc.prepare(&format!("PRAGMA table_info({});", table))?;
+        let rows = stmt.query_map([], |row| {
+            let name: String = row.get(1)?;
+            let data_type: String = row.get(2)?;
+            let notnull: i64 = row.get(3)?;
+            let dflt: Option<String> = row.get(4)?;
+            let pk: i64 = row.get(5)?;
+            Ok(ColumnInfo {
+                name,
+                data_type,
+                nullable: notnull == 0,
+                default: dflt,
+                primary_key: pk != 0,
+            })
+        })?;
+        let mut columns = Vec::new();
+        for r in rows { columns.push(r?); }
+        Ok(TableProperties { columns })
     }
 }
 

@@ -1,5 +1,3 @@
-use std::str::from_utf8_unchecked;
-
 use crossterm::event::KeyEvent;
 use ratatui::{
     Frame,
@@ -8,9 +6,8 @@ use ratatui::{
 
 use super::{Component, DBListComponent, DBListMsg, TableComponent, TableMsg};
 use crate::{
-    update::{Command, MapMsg, Update},
+    update::{MapMsg, Update},
     connection::Connection,
-    logger::error,
 };
 
 /// Messages the Dashboard component can emit
@@ -73,22 +70,12 @@ impl DashboardComponent {
     }
 
     fn move_to_table(&mut self, database: String, table: String) -> Update<DashboardMsg> {
-        let u = self.table.update(TableMsg::TableSelected {
-            database: database,
-            table: table,
-        });
-        match (u.msg, u.cmd) {
-            (None, Command::None) => {}
-            _ => error("Unexpected msg/cmd from TableMsg::TableSelected"),
-        }
+        self.table.set_table(database, table);
         self.focus = DashboardFocus::Table;
-        // Trigger records load using current connection
-        match &self.connection {
-            Some(conn) => self
-                .table
-                .update(TableMsg::LoadRecords(conn.clone()))
-                .map_auto(),
-            None => Update::none(),
+        if let Some(conn) = &self.connection {
+            DashboardMsg::TableMsg(TableMsg::LoadRecords(conn.clone())).into()
+        } else {
+            ().into()
         }
     }
 
@@ -115,6 +102,15 @@ impl Component for DashboardComponent {
             DashboardMsg::Leave => DashboardMsg::Leave.into(),
             DashboardMsg::ConnectionSelected(conn) => self.on_connection_selected(conn),
             DashboardMsg::DBListMsg(m) => self.dblist.update(m).map_auto(),
+            DashboardMsg::TableMsg(TableMsg::FocusProperties) => {
+                // Set focus first
+                let _ = self.table.update(TableMsg::FocusProperties);
+                if let Some(conn) = &self.connection {
+                    DashboardMsg::TableMsg(TableMsg::LoadProperties(conn.clone())).into()
+                } else {
+                    ().into()
+                }
+            }
             DashboardMsg::TableMsg(m) => self.table.update(m).map_auto(),
         }
     }

@@ -10,7 +10,7 @@ use super::Component;
 use crate::app::AppMsg;
 use crate::update::{Command, Update};
 use crate::connection::Connection;
-use crate::db::{DB, DBBehavior, Records};
+use crate::db::{DB, DBBehavior, Records, TableProperties};
 use crate::logger::{debug, error};
 
 #[derive(Debug, Clone)]
@@ -24,10 +24,12 @@ pub enum TableMsg {
     FocusSQL,
     FocusProperties,
     BackToDBList,
-    TableSelected { database: String, table: String },
     LoadRecords(Connection),
     RecordsLoaded(Records),
     RecordsLoadFailed(String),
+    LoadProperties(Connection),
+    PropertiesLoaded(TableProperties),
+    PropertiesLoadFailed(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,6 +43,7 @@ pub struct TableComponent {
     table_info: Option<TableInfo>,
     focus: TableFocus,
     records: Option<Records>,
+    properties: Option<TableProperties>,
 }
 
 impl TableComponent {
@@ -49,11 +52,14 @@ impl TableComponent {
             table_info: None,
             focus: TableFocus::Records,
             records: None,
+            properties: None,
         }
     }
 
-    fn set_table(&mut self, database: String, table: String) {
+    pub fn set_table(&mut self, database: String, table: String) {
         self.table_info = Some(TableInfo { database, table });
+        self.records = None;
+        self.properties = None;
     }
 
     fn get_table_info(&self) -> Option<&TableInfo> {
@@ -79,11 +85,6 @@ impl Component for TableComponent {
                 Update::none()
             }
             TableMsg::BackToDBList => TableMsg::BackToDBList.into(),
-            TableMsg::TableSelected { database, table } => {
-                self.set_table(database, table);
-                self.records = None; // Clear previous records
-                Update::none()
-            }
             TableMsg::LoadRecords(conn) => {
                 let Some(info) = self.table_info.clone() else {
                     return Update::none();
@@ -107,6 +108,27 @@ impl Component for TableComponent {
                 Update::none()
             }
             TableMsg::RecordsLoadFailed(_e) => Update::none(),
+            TableMsg::LoadProperties(conn) => {
+                let Some(info) = self.table_info.clone() else { return Update::none(); };
+                debug(&format!("Props: loading {}.{}", info.database, info.table));
+                let task = move |tx: std::sync::mpsc::Sender<AppMsg>| {
+                    let res = DB::fetch_properties(&conn, &info.database, &info.table);
+                    let msg = match res {
+                        Ok(props) => TableMsg::PropertiesLoaded(props).into(),
+                        Err(e) => {
+                            error(&format!("Props: load failed: {}", e));
+                            TableMsg::PropertiesLoadFailed(e.to_string()).into()
+                        }
+                    };
+                    let _ = tx.send(msg);
+                };
+                Command::Spawn(Box::new(task)).into()
+            }
+            TableMsg::PropertiesLoaded(props) => {
+                self.properties = Some(props);
+                Update::none()
+            }
+            TableMsg::PropertiesLoadFailed(_e) => Update::none(),
         }
     }
 
@@ -219,15 +241,49 @@ impl Component for TableComponent {
                     f.render_widget(sql_content, content_area);
                 }
                 TableFocus::Properties => {
-                    let properties_block = Block::default()
-                        .title("Properties")
-                        .borders(Borders::ALL)
-                        .border_style(content_style);
-
-                    let properties_content = Paragraph::new("Properties view - Not implemented yet\n\nTable schema and metadata will be shown here.")
-                        .block(properties_block);
-
-                    f.render_widget(properties_content, content_area);
+                    if let Some(props) = &self.properties {
+                        use ratatui::widgets::{Cell as TuiCell, Row, Table as TuiTable};
+                        let header = Row::new([
+                            TuiCell::from("Column").style(Style::default().add_modifier(Modifier::BOLD)),
+                            TuiCell::from("Type").style(Style::default().add_modifier(Modifier::BOLD)),
+                            TuiCell::from("Null").style(Style::default().add_modifier(Modifier::BOLD)),
+                            TuiCell::from("Default").style(Style::default().add_modifier(Modifier::BOLD)),
+                            TuiCell::from("PK").style(Style::default().add_modifier(Modifier::BOLD)),
+                        ]);
+                        let rows = props.columns.iter().map(|c| {
+                            Row::new([
+                                c.name.as_str(),
+                                c.data_type.as_str(),
+                                if c.nullable { "YES" } else { "NO" },
+                                c.default.as_deref().unwrap_or(""),
+                                if c.primary_key { "✔" } else { "" },
+                            ])
+                        });
+                        let widths = [
+                            Constraint::Length(24),
+                            Constraint::Length(18),
+                            Constraint::Length(6),
+                            Constraint::Length(24),
+                            Constraint::Length(4),
+                        ];
+                        let table = TuiTable::new(rows, widths)
+                            .header(header)
+                            .block(
+                                Block::default()
+                                    .title("Properties")
+                                    .borders(Borders::ALL)
+                                    .border_style(content_style),
+                            );
+                        f.render_widget(table, content_area);
+                    } else {
+                        let properties_block = Block::default()
+                            .title("Properties")
+                            .borders(Borders::ALL)
+                            .border_style(content_style);
+                        let properties_content = Paragraph::new("Loading properties...")
+                            .block(properties_block);
+                        f.render_widget(properties_content, content_area);
+                    }
                 }
             }
         } else {
