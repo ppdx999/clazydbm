@@ -8,10 +8,10 @@ use ratatui::{
 };
 
 use super::Component;
-use crate::update::{Command, Update};
+use crate::app::AppMsg;
 use crate::db::DBBehavior;
 use crate::logger::{error, info};
-use crate::app::AppMsg;
+use crate::update::{Command, Update};
 use crate::{connection::Connection, db};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -158,7 +158,19 @@ impl DBListComponent {
         for database in &self.databases {
             self.flatten_database(database, &mut flat_nodes);
         }
+
+        // Apply filter if query is not empty
+        if !self.filter_query.is_empty() {
+            let filter_lower = self.filter_query.to_lowercase();
+            flat_nodes.retain(|node| node.name.to_lowercase().contains(&filter_lower));
+        }
+
         self.flat_nodes = flat_nodes;
+
+        // Ensure selected index is valid after filtering
+        if self.selected >= self.flat_nodes.len() && !self.flat_nodes.is_empty() {
+            self.selected = self.flat_nodes.len() - 1;
+        }
     }
 
     fn flatten_database(&self, database: &Database, flat_nodes: &mut Vec<FlatNode>) {
@@ -280,6 +292,8 @@ impl DBListComponent {
         self.expanded_databases.clear();
         self.expanded_schemas.clear();
         self.selected = 0;
+        self.filter_query.clear();
+        self.focus = Focus::Tree;
         self.rebuild_flat_list();
         Update::none()
     }
@@ -294,9 +308,11 @@ impl DBListComponent {
 
     fn push_filter_char(&mut self, c: char) {
         self.filter_query.push(c);
+        self.rebuild_flat_list();
     }
     fn pop_filter_char(&mut self) {
         self.filter_query.pop();
+        self.rebuild_flat_list();
     }
 }
 
@@ -323,7 +339,11 @@ impl Component for DBListComponent {
             } => Update::none(), // Handled by parent
             DBListMsg::FilterPush(c) => self.push_filter_char(c).into(),
             DBListMsg::FilterPop => self.pop_filter_char().into(),
-            DBListMsg::FilterConfirm => self.move_focus_to_tree().into(),
+            DBListMsg::FilterConfirm => {
+                self.move_focus_to_tree();
+                self.rebuild_flat_list();
+                Update::none()
+            }
         }
     }
 
@@ -360,7 +380,7 @@ impl Component for DBListComponent {
                 _ => Update::none(),
             },
             Focus::Filter => match key.code {
-                Esc => DBListMsg::FilterConfirm.into(),
+                Esc | Enter => DBListMsg::FilterConfirm.into(),
                 Char(c) => DBListMsg::FilterPush(c).into(),
                 Backspace => DBListMsg::FilterPop.into(),
                 _ => Update::none(),
