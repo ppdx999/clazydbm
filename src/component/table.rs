@@ -42,6 +42,10 @@ pub enum TableMsg {
     ScrollPropsBy(i32),
     ScrollPropsTop,
     ScrollPropsBottom,
+    // Horizontal for Properties
+    ScrollPropsColsBy(i32),
+    PropsColsStart,
+    PropsColsEnd,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,6 +63,7 @@ pub struct TableComponent {
     records_scroll: usize,
     records_col_scroll: usize,
     properties_scroll: usize,
+    properties_col_scroll: usize,
 }
 
 impl TableComponent {
@@ -71,6 +76,7 @@ impl TableComponent {
             records_scroll: 0,
             records_col_scroll: 0,
             properties_scroll: 0,
+            properties_col_scroll: 0,
         }
     }
 
@@ -81,6 +87,7 @@ impl TableComponent {
         self.records_scroll = 0;
         self.records_col_scroll = 0;
         self.properties_scroll = 0;
+        self.properties_col_scroll = 0;
     }
 
     fn get_table_info(&self) -> Option<&TableInfo> {
@@ -226,6 +233,32 @@ impl Component for TableComponent {
                 }
                 Update::none()
             }
+            TableMsg::ScrollPropsColsBy(delta) => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    if delta < 0 {
+                        self.properties_col_scroll = self
+                            .properties_col_scroll
+                            .saturating_sub((-delta) as usize);
+                    } else if delta > 0 {
+                        self.properties_col_scroll = self
+                            .properties_col_scroll
+                            .saturating_add(delta as usize);
+                    }
+                }
+                Update::none()
+            }
+            TableMsg::PropsColsStart => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    self.properties_col_scroll = 0;
+                }
+                Update::none()
+            }
+            TableMsg::PropsColsEnd => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    self.properties_col_scroll = usize::MAX / 2;
+                }
+                Update::none()
+            }
         }
     }
 
@@ -282,18 +315,51 @@ impl Component for TableComponent {
                     TableMsg::ScrollBottom.into()
                 }
             }
-            // Horizontal column paging in Records tab
-            Left | Char('h') => TableMsg::ScrollColsBy(-1).into(),
-            Right | Char('l') => TableMsg::ScrollColsBy(1).into(),
+            // Horizontal column paging: route to Records or Properties based on focus
+            Left | Char('h') => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    // Shift properties columns left by 1
+                    TableMsg::ScrollPropsColsBy(-1).into()
+                } else {
+                    TableMsg::ScrollColsBy(-1).into()
+                }
+            }
+            Right | Char('l') => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsColsBy(1).into()
+                } else {
+                    TableMsg::ScrollColsBy(1).into()
+                }
+            }
             // Jump columns by 5 using '[' and ']'
-            Char('[') => TableMsg::ScrollColsBy(-5).into(),
-            Char(']') => TableMsg::ScrollColsBy(5).into(),
+            Char('[') => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsColsBy(-5).into()
+                } else {
+                    TableMsg::ScrollColsBy(-5).into()
+                }
+            }
+            Char(']') => {
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::ScrollPropsColsBy(5).into()
+                } else {
+                    TableMsg::ScrollColsBy(5).into()
+                }
+            }
             // Go to first/last column with Ctrl-A / Ctrl-E
             Char('a') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
-                TableMsg::ColsStart.into()
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::PropsColsStart.into()
+                } else {
+                    TableMsg::ColsStart.into()
+                }
             }
             Char('e') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
-                TableMsg::ColsEnd.into()
+                if matches!(self.focus, TableFocus::Properties) {
+                    TableMsg::PropsColsEnd.into()
+                } else {
+                    TableMsg::ColsEnd.into()
+                }
             }
             Char('k') => {
                 if matches!(self.focus, TableFocus::Properties) {
@@ -438,18 +504,29 @@ impl Component for TableComponent {
                 TableFocus::Properties => {
                     if let Some(props) = &self.properties {
                         use ratatui::widgets::{Cell as TuiCell, Row, Table as TuiTable};
-                        let header = Row::new([
-                            TuiCell::from("Column")
-                                .style(Style::default().add_modifier(Modifier::BOLD)),
-                            TuiCell::from("Type")
-                                .style(Style::default().add_modifier(Modifier::BOLD)),
-                            TuiCell::from("Null")
-                                .style(Style::default().add_modifier(Modifier::BOLD)),
-                            TuiCell::from("Default")
-                                .style(Style::default().add_modifier(Modifier::BOLD)),
-                            TuiCell::from("PK")
-                                .style(Style::default().add_modifier(Modifier::BOLD)),
-                        ]);
+                        // Build headers and widths with concise labels
+                        let header_labels = ["Column", "Type", "N", "Def", "PK"];
+                        let widths_all: [u16; 5] = [20, 14, 3, 20, 3];
+                        // Horizontal column window calculation based on available width
+                        let border_cols = 2u16; // left+right borders
+                        let avail_w = content_area.width.saturating_sub(border_cols);
+                        let mut col_start = 0usize;
+                        let mut col_end = header_labels.len();
+                        // Calculate start from scroll offset
+                        col_start = self.properties_col_scroll.min(header_labels.len().saturating_sub(1));
+                        // Determine how many columns fit from col_start
+                        let mut sum = 0u16;
+                        col_end = col_start;
+                        while col_end < header_labels.len() {
+                            let w = widths_all[col_end];
+                            if sum + w > avail_w { break; }
+                            sum += w;
+                            col_end += 1;
+                        }
+                        if col_end == col_start { col_end = (col_start + 1).min(header_labels.len()); }
+                        let header = Row::new(header_labels[col_start..col_end].iter().map(|c| {
+                            TuiCell::from(*c).style(Style::default().add_modifier(Modifier::BOLD))
+                        }));
                         // Visible slice based on height and properties_scroll
                         let border_rows = 2u16;
                         let header_rows = 1u16;
@@ -463,27 +540,25 @@ impl Component for TableComponent {
                         let start = self.properties_scroll.min(max_start);
                         let end = start.saturating_add(visible_count).min(total);
                         let rows = props.columns[start..end].iter().map(|c| {
-                            Row::new([
+                            let fields_all = [
                                 c.name.as_str(),
                                 c.data_type.as_str(),
                                 if c.nullable { "YES" } else { "NO" },
                                 c.default.as_deref().unwrap_or(""),
                                 if c.primary_key { "✔" } else { "" },
-                            ])
+                            ];
+                            Row::new(fields_all[col_start..col_end].iter().cloned())
                         });
-                        let widths = [
-                            Constraint::Length(24),
-                            Constraint::Length(18),
-                            Constraint::Length(6),
-                            Constraint::Length(24),
-                            Constraint::Length(4),
-                        ];
+                        let widths = widths_all[col_start..col_end]
+                            .iter()
+                            .cloned()
+                            .map(Constraint::Length)
+                            .collect::<Vec<_>>();
                         let title = if total > 0 && visible_count > 0 {
                             format!(
-                                "Properties  [{}-{} / {}]  (↑/↓, PgUp/PgDn, Home/End)",
-                                start.saturating_add(1),
-                                end,
-                                total
+                                "Properties  rows [{}-{} / {}], cols [{}-{} / {}]  (↑/↓, PgUp/PgDn, Home/End; ←/→)",
+                                start.saturating_add(1), end, total,
+                                col_start.saturating_add(1), col_end, header_labels.len()
                             )
                         } else {
                             "Properties".to_string()
