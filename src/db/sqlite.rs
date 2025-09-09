@@ -121,12 +121,13 @@ impl DBBehavior for Sqlite {
             let notnull: i64 = row.get(3)?;
             let dflt: Option<String> = row.get(4)?;
             let pk: i64 = row.get(5)?;
+            let is_primary_key = pk != 0;
             Ok(ColumnInfo {
                 name,
                 data_type,
-                nullable: notnull == 0,
+                nullable: if is_primary_key { false } else { notnull == 0 },
                 default: dflt,
-                primary_key: pk != 0,
+                primary_key: is_primary_key,
             })
         })?;
         let mut columns = Vec::new();
