@@ -7,6 +7,7 @@ pub enum Command {
     None,
     Batch(Vec<Command>),
     Spawn(Box<dyn FnOnce(Sender<AppMsg>) + Send>), // runs async and posts AppMsg
+    SuspendTerminal(Box<dyn FnOnce() -> Result<(), Box<dyn std::error::Error>> + Send>), // suspends terminal and runs closure
 }
 
 impl Command {

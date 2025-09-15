@@ -9,9 +9,10 @@ use ratatui::{
 use super::Component;
 use crate::app::AppMsg;
 use crate::connection::Connection;
-use crate::db::{DB, DBBehavior, Records, TableProperties};
+use crate::db::{DB, DBBehavior, Records, TableProperties, DatabaseType};
 use crate::logger::{debug, error};
 use crate::update::{Command, Update};
+use std::process::Command as StdCommand;
 
 #[derive(Debug, Clone)]
 pub struct TableInfo {
@@ -30,6 +31,7 @@ pub enum TableMsg {
     LoadProperties(Connection),
     PropertiesLoaded(TableProperties),
     PropertiesLoadFailed(String),
+    LaunchSQLCli(Connection),
     // Scrolling controls for Records view
     ScrollRecordsBy(i32),
     ScrollTop,
@@ -57,6 +59,7 @@ pub enum TableFocus {
 
 pub struct TableComponent {
     table_info: Option<TableInfo>,
+    connection: Option<Connection>,
     focus: TableFocus,
     records: Option<Records>,
     properties: Option<TableProperties>,
@@ -70,6 +73,7 @@ impl TableComponent {
     pub fn new() -> Self {
         Self {
             table_info: None,
+            connection: None,
             focus: TableFocus::Records,
             records: None,
             properties: None,
@@ -90,8 +94,73 @@ impl TableComponent {
         self.properties_col_scroll = 0;
     }
 
+    pub fn set_connection(&mut self, conn: Connection) {
+        self.connection = Some(conn);
+    }
+
     fn get_table_info(&self) -> Option<&TableInfo> {
         self.table_info.as_ref()
+    }
+
+    fn get_cli_tool_name(db_type: &DatabaseType) -> &'static str {
+        match db_type {
+            DatabaseType::Postgres => "pgcli",
+            DatabaseType::MySql => "mycli",
+            DatabaseType::Sqlite => "litecli",
+        }
+    }
+
+    fn check_cli_tool_available(tool_name: &str) -> bool {
+        StdCommand::new("which")
+            .arg(tool_name)
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    fn launch_external_cli(conn: &Connection) -> Box<dyn FnOnce() -> Result<(), Box<dyn std::error::Error>> + Send> {
+        let tool_name = Self::get_cli_tool_name(&conn.r#type);
+        let conn = conn.clone();
+        
+        Box::new(move || {
+            if !Self::check_cli_tool_available(tool_name) {
+                return Err(format!("CLI tool '{}' not found. Please install it first.", tool_name).into());
+            }
+
+            let result = match conn.r#type {
+                DatabaseType::Postgres | DatabaseType::MySql => {
+                    let db_url = DB::database_url(&conn)
+                        .map_err(|e| format!("Failed to build database URL: {}", e))?;
+                    debug(&format!("Launching {} with URL: {}", tool_name, db_url));
+                    
+                    StdCommand::new(tool_name)
+                        .arg(&db_url)
+                        .status()
+                }
+                DatabaseType::Sqlite => {
+                    // litecli expects the database file path directly
+                    let path = conn.path.as_ref()
+                        .ok_or_else(|| "SQLite connection requires a path")?;
+                    debug(&format!("Launching {} with file: {:?}", tool_name, path));
+                    
+                    StdCommand::new(tool_name)
+                        .arg(path)
+                        .status()
+                }
+            };
+
+            match result {
+                Ok(status) => {
+                    if status.success() {
+                        debug(&format!("Successfully completed {}", tool_name));
+                        Ok(())
+                    } else {
+                        Err(format!("{} exited with status: {}", tool_name, status).into())
+                    }
+                }
+                Err(e) => Err(format!("Failed to launch {}: {}", tool_name, e).into()),
+            }
+        })
     }
 }
 
@@ -162,6 +231,10 @@ impl Component for TableComponent {
                 Update::none()
             }
             TableMsg::PropertiesLoadFailed(_e) => Update::none(),
+            TableMsg::LaunchSQLCli(conn) => {
+                let task = Self::launch_external_cli(&conn);
+                Command::SuspendTerminal(task).into()
+            }
             TableMsg::ScrollRecordsBy(delta) => {
                 if matches!(self.focus, TableFocus::Records) {
                     if delta < 0 {
@@ -375,6 +448,17 @@ impl Component for TableComponent {
                     TableMsg::ScrollRecordsBy(1).into()
                 }
             }
+            Enter => {
+                if matches!(self.focus, TableFocus::SQL) {
+                    if let Some(conn) = &self.connection {
+                        TableMsg::LaunchSQLCli(conn.clone()).into()
+                    } else {
+                        Update::none()
+                    }
+                } else {
+                    Update::none()
+                }
+            }
             _ => Update::none(),
         }
     }
@@ -494,10 +578,27 @@ impl Component for TableComponent {
                         .borders(Borders::ALL)
                         .border_style(content_style);
 
-                    let sql_content = Paragraph::new(
-                        "SQL view - Not implemented yet\n\nWrite and execute SQL queries here.",
-                    )
-                    .block(sql_block);
+                    let (tool_info, instructions) = if let Some(conn) = &self.connection {
+                        let tool_name = Self::get_cli_tool_name(&conn.r#type);
+                        let available = Self::check_cli_tool_available(tool_name);
+                        
+                        if available {
+                            (
+                                format!("External CLI tool: {} (available)", tool_name),
+                                "Press [Enter] to launch external SQL CLI\n\nThis will open the appropriate CLI tool:\n• PostgreSQL: pgcli\n• MySQL: mycli\n• SQLite: litecli".to_string()
+                            )
+                        } else {
+                            (
+                                format!("External CLI tool: {} (NOT INSTALLED)", tool_name),
+                                format!("Please install {} to use SQL functionality:\n\npip install {}", tool_name, tool_name)
+                            )
+                        }
+                    } else {
+                        ("No connection available".to_string(), "No database connection available".to_string())
+                    };
+
+                    let sql_content = Paragraph::new(format!("{}\n\n{}", tool_info, instructions))
+                        .block(sql_block);
 
                     f.render_widget(sql_content, content_area);
                 }

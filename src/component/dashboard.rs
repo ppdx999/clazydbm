@@ -71,6 +71,9 @@ impl DashboardComponent {
 
     fn move_to_table(&mut self, database: String, table: String) -> Update<DashboardMsg> {
         self.table.set_table(database, table);
+        if let Some(conn) = &self.connection {
+            self.table.set_connection(conn.clone());
+        }
         self.focus = DashboardFocus::Table;
         if let Some(conn) = &self.connection {
             DashboardMsg::TableMsg(TableMsg::LoadRecords(conn.clone())).into()
