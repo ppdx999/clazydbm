@@ -27,10 +27,16 @@ A modern Terminal User Interface (TUI) database management tool for PostgreSQL, 
 
 ## Installation
 
+### From crates.io (Recommended)
+
+```bash
+cargo install clazydbm
+```
+
 ### From source
 
 ```bash
-git clone https://github.com/your-username/clazydbm.git
+git clone https://github.com/ppdx999/clazydbm.git
 cd clazydbm
 cargo install --path .
 ```
