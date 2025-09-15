@@ -133,7 +133,12 @@ impl<B: Backend> App<B> {
                     self.run_command(c)
                 }
             }
-            Command::Spawn(task) => task(self.tx.clone()),
+            Command::Spawn(task) => {
+                let tx = self.tx.clone();
+                std::thread::spawn(move || {
+                    task(tx);
+                });
+            }
         }
     }
 }
