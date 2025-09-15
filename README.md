@@ -135,6 +135,10 @@ clazydbm is built with a modular architecture:
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+## Acknowledgments
+
+This project was greatly inspired by [gobang](https://github.com/TaKO8Ki/gobang) by [TaKO8Ki](https://github.com/TaKO8Ki). We are grateful for the excellent foundation and design patterns that gobang provided for building terminal-based database management tools.
+
 ## License
 
 MIT License - see LICENSE file for details
