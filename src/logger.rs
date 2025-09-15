@@ -75,6 +75,7 @@ fn write_line(level: &str, msg: &str) {
 pub fn error(msg: &str) {
     if enabled(LogLevel::Error) { write_line("ERROR", msg); }
 }
+#[allow(dead_code)]
 pub fn warn(msg: &str) {
     if enabled(LogLevel::Warn) { write_line("WARN", msg); }
 }
@@ -84,6 +85,7 @@ pub fn info(msg: &str) {
 pub fn debug(msg: &str) {
     if enabled(LogLevel::Debug) { write_line("DEBUG", msg); }
 }
+#[allow(dead_code)]
 pub fn trace(msg: &str) {
     if enabled(LogLevel::Trace) { write_line("TRACE", msg); }
 }

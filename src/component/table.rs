@@ -98,9 +98,6 @@ impl TableComponent {
         self.connection = Some(conn);
     }
 
-    fn get_table_info(&self) -> Option<&TableInfo> {
-        self.table_info.as_ref()
-    }
 
     fn get_cli_tool_name(db_type: &DatabaseType) -> &'static str {
         match db_type {
@@ -611,13 +608,11 @@ impl Component for TableComponent {
                         // Horizontal column window calculation based on available width
                         let border_cols = 2u16; // left+right borders
                         let avail_w = content_area.width.saturating_sub(border_cols);
-                        let mut col_start = 0usize;
-                        let mut col_end = header_labels.len();
                         // Calculate start from scroll offset
-                        col_start = self.properties_col_scroll.min(header_labels.len().saturating_sub(1));
+                        let col_start = self.properties_col_scroll.min(header_labels.len().saturating_sub(1));
                         // Determine how many columns fit from col_start
                         let mut sum = 0u16;
-                        col_end = col_start;
+                        let mut col_end = col_start;
                         while col_end < header_labels.len() {
                             let w = widths_all[col_end];
                             if sum + w > avail_w { break; }

@@ -70,6 +70,7 @@ impl<B: Backend> Terminal<B> {
     }
 
     /// Delegate to the inner terminal's clear method
+    #[allow(dead_code)]
     pub fn clear(&mut self) -> std::io::Result<()> {
         self.inner.clear()
     }

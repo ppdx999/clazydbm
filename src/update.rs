@@ -3,6 +3,7 @@ use std::sync::mpsc::Sender;
 use crate::app::AppMsg;
 use crate::component::{ConnectionMsg, DashboardMsg, DBListMsg, RootMsg, TableMsg};
 
+#[allow(dead_code)]
 pub enum Command {
     None,
     Batch(Vec<Command>),
@@ -10,6 +11,7 @@ pub enum Command {
     SuspendTerminal(Box<dyn FnOnce() -> Result<(), Box<dyn std::error::Error>> + Send>), // suspends terminal and runs closure
 }
 
+#[allow(dead_code)]
 impl Command {
     pub fn none() -> Self {
         Command::None
@@ -32,6 +34,7 @@ pub struct Update<T> {
     pub cmd: Command,
 }
 
+#[allow(dead_code)]
 impl<T> Update<T> {
     pub fn none() -> Self {
         Self {
@@ -98,6 +101,7 @@ impl From<RootMsg> for Update<RootMsg> {
     }
 }
 
+#[allow(dead_code)]
 pub trait MapMsg<M> {
     fn map<ParentMsg>(self, wrap: impl FnOnce(M) -> ParentMsg) -> Update<ParentMsg>;
     fn map_auto<ParentMsg>(self) -> Update<ParentMsg>

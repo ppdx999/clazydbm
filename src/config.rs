@@ -57,10 +57,6 @@ impl Config {
         Ok(Self::get_app_config_path()?.join(CONNECTIONS_FILE))
     }
 
-    pub fn load_connections() -> Result<Vec<Connection>> {
-        let cfg = Self::new()?;
-        Ok(cfg.conn)
-    }
 
     /// Public accessor for the per-user app config directory.
     /// Used by other subsystems (e.g. logging) to store runtime files.

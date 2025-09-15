@@ -103,6 +103,7 @@ pub enum FlatNodeType {
     Table {
         database: String,
         table: String,
+        #[allow(dead_code)]
         schema: Option<String>,
     },
 }

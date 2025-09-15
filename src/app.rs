@@ -12,6 +12,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
+#[allow(dead_code)]
 pub enum AppMsg {
     Quit,
     Root(RootMsg),
