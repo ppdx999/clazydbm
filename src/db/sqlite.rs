@@ -6,6 +6,7 @@ use crate::component::{Child, Database, Table};
 use crate::{connection::Connection, db::DBBehavior};
 use crate::db::{Records, ColumnInfo, TableProperties};
 use crate::logger::debug;
+use std::process::Command;
 
 pub struct Sqlite {}
 
@@ -133,6 +134,29 @@ impl DBBehavior for Sqlite {
         let mut columns = Vec::new();
         for r in rows { columns.push(r?); }
         Ok(TableProperties { columns })
+    }
+    
+    fn cli_tool_name() -> &'static str {
+        "litecli"
+    }
+    
+    fn is_cli_tool_available() -> bool {
+        Command::new("which")
+            .arg("litecli")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+    
+    fn launch_cli_tool(conn: &Connection) -> Result<std::process::ExitStatus> {
+        let path = conn.path.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("SQLite connection requires a path"))?;
+        debug(&format!("Launching litecli with file: {:?}", path));
+        
+        Command::new("litecli")
+            .arg(path)
+            .status()
+            .map_err(|e| anyhow::anyhow!("Failed to launch litecli: {}", e))
     }
 }
 

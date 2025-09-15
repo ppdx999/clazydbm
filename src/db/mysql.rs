@@ -4,6 +4,7 @@ use crate::component::{Child, Database, Table};
 use crate::{connection::Connection, db::DBBehavior};
 use crate::db::{Records, ColumnInfo, TableProperties};
 use crate::logger::debug;
+use std::process::Command;
 
 pub struct Mysql {}
 
@@ -166,5 +167,27 @@ impl DBBehavior for Mysql {
             })
             .collect();
         Ok(TableProperties { columns })
+    }
+    
+    fn cli_tool_name() -> &'static str {
+        "mycli"
+    }
+    
+    fn is_cli_tool_available() -> bool {
+        Command::new("which")
+            .arg("mycli")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+    
+    fn launch_cli_tool(conn: &Connection) -> Result<std::process::ExitStatus> {
+        let db_url = Self::database_url(conn)?;
+        debug(&format!("Launching mycli with URL: {}", db_url));
+        
+        Command::new("mycli")
+            .arg(&db_url)
+            .status()
+            .map_err(|e| anyhow::anyhow!("Failed to launch mycli: {}", e))
     }
 }

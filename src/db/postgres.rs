@@ -4,6 +4,7 @@ use crate::component::{Child, Database, Schema, Table};
 use crate::{connection::Connection, db::DBBehavior};
 use crate::db::{Records, ColumnInfo, TableProperties};
 use crate::logger::debug;
+use std::process::Command;
 
 pub struct Postgres {}
 
@@ -179,5 +180,27 @@ impl DBBehavior for Postgres {
         }
 
         Ok(TableProperties { columns })
+    }
+    
+    fn cli_tool_name() -> &'static str {
+        "pgcli"
+    }
+    
+    fn is_cli_tool_available() -> bool {
+        Command::new("which")
+            .arg("pgcli")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+    
+    fn launch_cli_tool(conn: &Connection) -> Result<std::process::ExitStatus> {
+        let db_url = Self::database_url(conn)?;
+        debug(&format!("Launching pgcli with URL: {}", db_url));
+        
+        Command::new("pgcli")
+            .arg(&db_url)
+            .status()
+            .map_err(|e| anyhow::anyhow!("Failed to launch pgcli: {}", e))
     }
 }

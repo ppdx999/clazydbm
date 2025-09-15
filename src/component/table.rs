@@ -9,10 +9,9 @@ use ratatui::{
 use super::Component;
 use crate::app::AppMsg;
 use crate::connection::Connection;
-use crate::db::{DB, DBBehavior, Records, TableProperties, DatabaseType};
+use crate::db::{DB, DBBehavior, Records, TableProperties};
 use crate::logger::{debug, error};
 use crate::update::{Command, Update};
-use std::process::Command as StdCommand;
 
 #[derive(Debug, Clone)]
 pub struct TableInfo {
@@ -99,57 +98,19 @@ impl TableComponent {
     }
 
 
-    fn get_cli_tool_name(db_type: &DatabaseType) -> &'static str {
-        match db_type {
-            DatabaseType::Postgres => "pgcli",
-            DatabaseType::MySql => "mycli",
-            DatabaseType::Sqlite => "litecli",
-        }
-    }
-
-    fn check_cli_tool_available(tool_name: &str) -> bool {
-        StdCommand::new("which")
-            .arg(tool_name)
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-    }
-
     fn launch_external_cli(conn: &Connection) -> Box<dyn FnOnce() -> Result<(), Box<dyn std::error::Error>> + Send> {
-        let tool_name = Self::get_cli_tool_name(&conn.r#type);
         let conn = conn.clone();
         
         Box::new(move || {
-            if !Self::check_cli_tool_available(tool_name) {
+            let tool_name = DB::cli_tool_name_for(&conn);
+            
+            if !DB::is_cli_tool_available_for(&conn) {
                 return Err(format!("CLI tool '{}' not found. Please install it first.", tool_name).into());
             }
 
-            let result = match conn.r#type {
-                DatabaseType::Postgres | DatabaseType::MySql => {
-                    let db_url = DB::database_url(&conn)
-                        .map_err(|e| format!("Failed to build database URL: {}", e))?;
-                    debug(&format!("Launching {} with URL: {}", tool_name, db_url));
-                    
-                    StdCommand::new(tool_name)
-                        .arg(&db_url)
-                        .status()
-                }
-                DatabaseType::Sqlite => {
-                    // litecli expects the database file path directly
-                    let path = conn.path.as_ref()
-                        .ok_or_else(|| "SQLite connection requires a path")?;
-                    debug(&format!("Launching {} with file: {:?}", tool_name, path));
-                    
-                    StdCommand::new(tool_name)
-                        .arg(path)
-                        .status()
-                }
-            };
-
-            match result {
+            match DB::launch_cli_tool_for(&conn) {
                 Ok(status) => {
                     if status.success() {
-                        debug(&format!("Successfully completed {}", tool_name));
                         Ok(())
                     } else {
                         Err(format!("{} exited with status: {}", tool_name, status).into())
@@ -576,8 +537,8 @@ impl Component for TableComponent {
                         .border_style(content_style);
 
                     let (tool_info, instructions) = if let Some(conn) = &self.connection {
-                        let tool_name = Self::get_cli_tool_name(&conn.r#type);
-                        let available = Self::check_cli_tool_available(tool_name);
+                        let tool_name = DB::cli_tool_name_for(conn);
+                        let available = DB::is_cli_tool_available_for(conn);
                         
                         if available {
                             (
