@@ -11,6 +11,13 @@ license = "MIT"
 keywords = ["database", "tui", "postgresql", "mysql", "sqlite"]
 categories = ["command-line-utilities", "database"]
 default-run = "clazydbm"
+include = [
+    "src/**/*",
+    "assets/**/*",
+    "README.md",
+    "LICENSE",
+    "Cargo.toml"
+]
 
 [dependencies]
 ratatui = "0.26"

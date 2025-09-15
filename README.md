@@ -2,16 +2,28 @@
 
 A modern Terminal User Interface (TUI) database management tool for PostgreSQL, MySQL, and SQLite.
 
+## Screenshots
+
+### Connection Selection
+![Connection Selection](assets/connections.png)
+
+### Database Records View
+![Records View](assets/records.png)
+
+### Table Properties View
+![Properties View](assets/properties.png)
+
 ## Features
 
-- **Multi-database support**: PostgreSQL, MySQL, and SQLite
-- **Terminal User Interface**: Clean, keyboard-driven interface built with Ratatui
-- **Database browsing**: Navigate through databases, tables, and schemas
-- **Data viewing**: Browse table records with pagination and horizontal scrolling
-- **Table properties**: View column information, data types, and constraints
-- **External CLI integration**: Seamlessly launch pgcli, mycli, or litecli for advanced SQL operations
-- **Connection management**: Save and manage multiple database connections
-- **Real-time search**: Filter databases and tables with live search functionality
+- **📊 Multi-database support**: Connect to PostgreSQL, MySQL, and SQLite databases
+- **🖥️ Clean TUI interface**: Modern terminal interface built with Ratatui
+- **🔍 Database exploration**: Navigate through databases, tables, and schemas with ease
+- **📋 Data viewing**: Browse table records with pagination and horizontal scrolling
+- **⚙️ Table inspection**: View detailed column information, data types, and constraints
+- **🚀 CLI integration**: Launch pgcli, mycli, or litecli directly from the SQL tab
+- **💾 Connection management**: Save and organize multiple database connections
+- **🔎 Live search**: Real-time filtering of databases and tables
+- **⌨️ Keyboard-driven**: Full keyboard navigation with intuitive shortcuts
 
 ## Installation
 
