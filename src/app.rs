@@ -1,14 +1,13 @@
 use crate::component::ConnectionMsg;
 use crate::component::{Component, DBListMsg, DashboardMsg, RootComponent, RootMsg, TableMsg};
+use crate::terminal::Terminal;
 use crate::update::Command;
 use crate::update::MapMsg;
 use crate::update::Update;
 use crossterm::event::KeyModifiers;
 use crossterm::event::{self, Event, KeyCode};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use ratatui::Terminal;
 use ratatui::prelude::Backend;
-use std::io::{Result, stdout, Write};
+use std::io::Result;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -75,37 +74,6 @@ impl<B: Backend> App<B> {
         Ok(())
     }
 
-    /// Execute a closure with suspended terminal (convenience method)
-    fn with_suspended_terminal<F, R>(&mut self, f: F) -> std::result::Result<R, Box<dyn std::error::Error>>
-    where
-        F: FnOnce() -> std::result::Result<R, Box<dyn std::error::Error>>,
-    {
-        // Clear screen and restore cursor
-        self.term.clear()?;
-        
-        // Leave alternate screen
-        let mut stdout = stdout();
-        write!(stdout, "\x1b[?1049l")?; // Exit alternate screen buffer
-        stdout.flush()?;
-        
-        // Disable raw mode
-        disable_raw_mode()?;
-        
-        // Execute the closure
-        let result = f();
-        
-        // Re-enable raw mode
-        enable_raw_mode()?;
-        
-        // Re-enter alternate screen
-        write!(stdout, "\x1b[?1049h")?; // Enter alternate screen buffer
-        stdout.flush()?;
-        
-        // Clear and redraw
-        self.term.clear()?;
-        
-        result
-    }
 
     fn draw(&mut self) -> Result<()> {
         self.term.draw(|f| {
@@ -173,7 +141,7 @@ impl<B: Backend> App<B> {
                 });
             }
             Command::SuspendTerminal(task) => {
-                if let Err(e) = self.with_suspended_terminal(|| {
+                if let Err(e) = self.term.with_suspended(|| {
                     task().map_err(|e| -> Box<dyn std::error::Error> { e })
                 }) {
                     crate::logger::error(&format!("Terminal suspend error: {}", e));
