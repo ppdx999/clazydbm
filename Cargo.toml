@@ -1,7 +1,15 @@
 [package]
 name = "clazydbm"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+authors = ["fujis"]
+description = "A modern Terminal User Interface (TUI) database management tool for PostgreSQL, MySQL, and SQLite"
+readme = "README.md"
+homepage = "https://github.com/your-username/clazydbm"
+repository = "https://github.com/your-username/clazydbm"
+license = "MIT"
+keywords = ["database", "tui", "postgresql", "mysql", "sqlite"]
+categories = ["command-line-utilities", "database"]
 default-run = "clazydbm"
 
 [dependencies]
