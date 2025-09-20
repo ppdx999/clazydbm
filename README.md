@@ -68,32 +68,30 @@ clazydbm
 
 On first run, clazydbm will create a configuration directory in your home folder. Edit the connections file to add your database connections:
 
-**Linux/macOS**: `~/.config/clazydbm/connections.yaml`
-**Windows**: `%APPDATA%/clazydbm/connections.yaml`
+**Linux/macOS**: `~/.config/clazydbm/config.yaml`
+**Windows**: `%APPDATA%/clazydbm/config.yaml`
 
 Example configuration:
 
 ```yaml
-connections:
-  - name: "Local PostgreSQL"
-    type: postgres
-    host: localhost
-    port: 5432
-    user: postgres
-    password: password
-    database: mydb
-
-  - name: "Local MySQL"
-    type: mysql
-    host: localhost
-    port: 3306
+conn:
+  - type: mysql
+    name: demo-mysql
     user: root
-    password: password
-    database: mydb
-
-  - name: "SQLite Database"
-    type: sqlite
-    path: "./example.db"
+    password: rootpass
+    host: 127.0.0.1
+    port: 3306
+    database: demo
+  - type: postgres
+    name: demo-postgres
+    user: postgres
+    password: postgres
+    host: 127.0.0.1
+    port: 5432
+    database: demo
+  - type: sqlite
+    name: demo-sqlite
+    path: dev/sqlite/sample.db
 ```
 
 ### Keyboard Shortcuts
