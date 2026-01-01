@@ -1,3 +1,4 @@
+use anyhow::Result;
 use crossterm::event::KeyEvent;
 use ratatui::{
     Frame,
@@ -27,11 +28,11 @@ pub struct ConnectionComponent {
 }
 
 impl ConnectionComponent {
-    pub fn new() -> Self {
-        Self {
-            items: load_connections().unwrap(),
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            items: load_connections()?,
             selected: 0,
-        }
+        })
     }
     fn selected_connection(&self) -> Option<&Connection> {
         self.items.get(self.selected)

@@ -1,3 +1,4 @@
+use anyhow::Result;
 use crate::component::ConnectionMsg;
 use crate::component::{Component, DBListMsg, DashboardMsg, RootComponent, RootMsg, TableMsg};
 use crate::terminal::Terminal;
@@ -7,7 +8,6 @@ use crate::update::Update;
 use crossterm::event::KeyModifiers;
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::prelude::Backend;
-use std::io::Result;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -55,15 +55,15 @@ pub struct App<B: Backend> {
 }
 
 impl<B: Backend> App<B> {
-    pub fn new(term: Terminal<B>) -> Self {
+    pub fn new(term: Terminal<B>) -> Result<Self> {
         let (tx, rx) = std::sync::mpsc::channel();
-        Self {
+        Ok(Self {
             term,
-            root: RootComponent::new(),
+            root: RootComponent::new()?,
             rx,
             tx,
             should_quit: false,
-        }
+        })
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -153,6 +153,6 @@ impl<B: Backend> App<B> {
 }
 
 pub fn run_app<B: Backend>(terminal: Terminal<B>) -> Result<()> {
-    let mut app = App::new(terminal);
+    let mut app = App::new(terminal)?;
     app.run()
 }

@@ -1,3 +1,4 @@
+use anyhow::Result;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
@@ -6,7 +7,7 @@ use crossterm::{
 use ratatui;
 use ratatui::{Terminal as RatatuiTerminal, backend::CrosstermBackend};
 use ratatui::prelude::Backend;
-use std::io::{self, Result, Stdout, stdout, Write};
+use std::io::{self, Stdout, stdout, Write};
 
 /// Custom terminal wrapper that handles suspension and restoration
 pub struct Terminal<B: Backend> {
@@ -62,17 +63,19 @@ impl<B: Backend> Terminal<B> {
     }
 
     /// Delegate to the inner terminal's draw method
-    pub fn draw<F>(&mut self, f: F) -> std::io::Result<()>
+    pub fn draw<F>(&mut self, f: F) -> Result<()>
     where
         F: FnOnce(&mut ratatui::Frame),
     {
-        self.inner.draw(f).map(|_| ())
+        self.inner.draw(f).map(|_| ())?;
+        Ok(())
     }
 
     /// Delegate to the inner terminal's clear method
     #[allow(dead_code)]
-    pub fn clear(&mut self) -> std::io::Result<()> {
-        self.inner.clear()
+    pub fn clear(&mut self) -> Result<()> {
+        self.inner.clear()?;
+        Ok(())
     }
 }
 

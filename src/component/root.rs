@@ -1,3 +1,4 @@
+use anyhow::Result;
 use crate::update::{MapMsg, Update};
 use crate::component::{
     Component, ConnectionComponent, ConnectionMsg, DashboardComponent, DashboardMsg,
@@ -42,12 +43,12 @@ pub struct RootComponent {
 }
 
 impl RootComponent {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Result<Self> {
+        Ok(Self {
             focus: Focus::Connection,
-            connection: ConnectionComponent::new(),
+            connection: ConnectionComponent::new()?,
             dashboard: DashboardComponent::new(),
-        }
+        })
     }
     fn move_to_dashboard(&mut self, conn: Connection) -> Update<RootMsg> {
         // Store selected connection and trigger DBList load immediately
