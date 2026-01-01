@@ -15,11 +15,11 @@ sql_script='CREATE TABLE IF NOT EXISTS users (
 );
 DELETE FROM users;
 INSERT INTO users (name, email) VALUES
-  ("Alice", "alice@example.com"),
-  ("Bob", "bob@example.com"),
-  ("Carol", "carol@example.com"),
-  ("Dave", "dave@example.com"),
-  ("Eve", "eve@example.com");
+  ('"'"'Alice'"'"', '"'"'alice@example.com'"'"'),
+  ('"'"'Bob'"'"', '"'"'bob@example.com'"'"'),
+  ('"'"'Carol'"'"', '"'"'carol@example.com'"'"'),
+  ('"'"'Dave'"'"', '"'"'dave@example.com'"'"'),
+  ('"'"'Eve'"'"', '"'"'eve@example.com'"'"');
 
 -- Large table for display/scroll testing
 CREATE TABLE IF NOT EXISTS big_users (
@@ -34,7 +34,7 @@ WITH RECURSIVE seq(x) AS (
   SELECT x + 1 FROM seq WHERE x < 1000
 )
 INSERT INTO big_users (id, name, email)
-SELECT x, printf("User %04d", x), printf("user%04d@example.com", x)
+SELECT x, printf('"'"'User %04d'"'"', x), printf('"'"'user%04d@example.com'"'"', x)
 FROM seq;'
 
 # Add stress tables for scrolling/performance tests
@@ -58,8 +58,8 @@ b(n) AS (
 )
 INSERT INTO huge_users (id, name, email)
 SELECT (b.n - 1) * 100 + a.n,
-       printf("User %05d", (b.n - 1) * 100 + a.n),
-       printf("user%05d@example.com", (b.n - 1) * 100 + a.n)
+       printf('"'"'User %05d'"'"', (b.n - 1) * 100 + a.n),
+       printf('"'"'user%05d@example.com'"'"', (b.n - 1) * 100 + a.n)
 FROM a CROSS JOIN b;
 
 -- Wide table with many columns to test Properties scrolling
@@ -93,11 +93,11 @@ CREATE TABLE IF NOT EXISTS users (
 );
 DELETE FROM users;
 INSERT INTO users (name, email) VALUES
-  ("Alice", "alice@example.com"),
-  ("Bob", "bob@example.com"),
-  ("Carol", "carol@example.com"),
-  ("Dave", "dave@example.com"),
-  ("Eve", "eve@example.com");
+  ('Alice', 'alice@example.com'),
+  ('Bob', 'bob@example.com'),
+  ('Carol', 'carol@example.com'),
+  ('Dave', 'dave@example.com'),
+  ('Eve', 'eve@example.com');
 
 -- Large table for display/scroll testing
 CREATE TABLE IF NOT EXISTS big_users (
@@ -112,7 +112,7 @@ WITH RECURSIVE seq(x) AS (
   SELECT x + 1 FROM seq WHERE x < 1000
 )
 INSERT INTO big_users (id, name, email)
-SELECT x, printf("User %04d", x), printf("user%04d@example.com", x)
+SELECT x, printf('User %04d', x), printf('user%04d@example.com', x)
 FROM seq;
 
 -- Very large row count table (10,000 rows)
@@ -134,8 +134,8 @@ b(n) AS (
 )
 INSERT INTO huge_users (id, name, email)
 SELECT (b.n - 1) * 100 + a.n,
-       printf("User %05d", (b.n - 1) * 100 + a.n),
-       printf("user%05d@example.com", (b.n - 1) * 100 + a.n)
+       printf('User %05d', (b.n - 1) * 100 + a.n),
+       printf('user%05d@example.com', (b.n - 1) * 100 + a.n)
 FROM a CROSS JOIN b;
 
 -- Wide table with many columns to test Properties scrolling
