@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,6 +7,31 @@ use crate::connection::Connection;
 
 const APP_NAME: &str = "clazydbm";
 const CONFIG_FILENAME: &str = "config.yaml";
+
+const CONFIG_SAMPLE: &str = r#"conn:
+  # MySQL example
+  - type: mysql
+    name: my-mysql
+    user: root
+    password: secret
+    host: 127.0.0.1
+    port: 3306
+    database: mydb
+
+  # PostgreSQL example
+  - type: postgres
+    name: my-postgres
+    user: postgres
+    password: secret
+    host: 127.0.0.1
+    port: 5432
+    database: mydb
+
+  # SQLite example
+  - type: sqlite
+    name: my-sqlite
+    path: ~/data/sample.db
+"#;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
@@ -19,7 +44,14 @@ impl Config {
         if Path::new(&path).exists() {
             let data = fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
             let cfg: Config = serde_yaml::from_slice(&data)
-                .with_context(|| format!("failed to parse YAML at {}", path.display()))?;
+                .map_err(|e| {
+                    anyhow!(
+                        "failed to parse YAML at {}\n\nError: {}\n\nExpected format:\n{}",
+                        path.display(),
+                        e,
+                        CONFIG_SAMPLE
+                    )
+                })?;
             Ok(cfg)
         } else {
             Config { conn: Vec::new() }
