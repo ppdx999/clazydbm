@@ -40,24 +40,53 @@ pub struct Config {
 
 impl Config {
     pub fn new() -> Result<Self> {
-        let path = Self::app_config_dir()?.join(CONFIG_FILENAME);
-        if Path::new(&path).exists() {
-            let data = fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
-            let cfg: Config = serde_yaml::from_slice(&data)
-                .map_err(|e| {
-                    anyhow!(
-                        "failed to parse YAML at {}\n\nError: {}\n\nExpected format:\n{}",
-                        path.display(),
-                        e,
-                        CONFIG_SAMPLE
-                    )
-                })?;
-            Ok(cfg)
-        } else {
-            Config { conn: Vec::new() }
-                .try_into()
-                .with_context(|| "failed to create default config")
+        let mut all_connections: Vec<Connection> = Vec::new();
+
+        // 1. Global config: ~/.config/clazydbm/config.yaml
+        let global_path = Self::app_config_dir()?.join(CONFIG_FILENAME);
+        if let Some(cfg) = Self::load_from_path(&global_path)? {
+            all_connections.extend(cfg.conn);
         }
+
+        // 2. Local config: ./.clazydbm.yaml
+        let local_path = PathBuf::from(".clazydbm.yaml");
+        if let Some(cfg) = Self::load_from_path(&local_path)? {
+            all_connections.extend(cfg.conn);
+        }
+
+        // 3. Environment variable: CLAZYDBM_CONFIG
+        if let Ok(env_path) = std::env::var("CLAZYDBM_CONFIG") {
+            let path = PathBuf::from(&env_path);
+            if let Some(cfg) = Self::load_from_path(&path)? {
+                all_connections.extend(cfg.conn);
+            }
+        }
+
+        // 4. CLI option (passed via internal env var)
+        if let Ok(cli_path) = std::env::var("CLAZYDBM_CONFIG_CLI") {
+            let path = PathBuf::from(&cli_path);
+            if let Some(cfg) = Self::load_from_path(&path)? {
+                all_connections.extend(cfg.conn);
+            }
+        }
+
+        Ok(Config { conn: all_connections })
+    }
+
+    fn load_from_path(path: &Path) -> Result<Option<Config>> {
+        if !path.exists() {
+            return Ok(None);
+        }
+        let data = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+        let cfg: Config = serde_yaml::from_slice(&data).map_err(|e| {
+            anyhow!(
+                "failed to parse YAML at {}\n\nError: {}\n\nExpected format:\n{}",
+                path.display(),
+                e,
+                CONFIG_SAMPLE
+            )
+        })?;
+        Ok(Some(cfg))
     }
 
     /// Public accessor for the per-user app config directory.

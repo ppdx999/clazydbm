@@ -27,6 +27,7 @@ dirs-next = "2"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 async-trait = "0.1.89"
+clap = { version = "4", features = ["derive"] }
 
 [dependencies.mysql]
 version = "24"
