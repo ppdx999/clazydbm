@@ -97,6 +97,338 @@ pub struct Table {
     pub schema: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum NodePath {
+    Database(usize),
+    Schema(usize, usize),
+    TableInDb(usize, usize),
+    TableInSchema(usize, usize, usize),
+}
+
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct Databases {
+    data: Vec<Database>,
+    selected: Option<NodePath>,
+}
+
+impl Databases {
+    pub fn new(databases: Vec<Database>) -> Self {
+        Self {
+            data: databases,
+            selected: None,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    pub fn select_first(&mut self) {
+        if !self.data.is_empty() {
+            self.selected = Some(NodePath::Database(0));
+        }
+    }
+
+    pub fn select_last(&mut self) {
+        if let Some(db_idx) = self.data.len().checked_sub(1) {
+            self.selected = Some(self.last_visible_in_db(db_idx));
+        }
+    }
+
+    pub fn select_next(&mut self) {
+        if let Some(next) = self.find_next() {
+            self.selected = Some(next);
+        }
+    }
+
+    pub fn select_prev(&mut self) {
+        if let Some(prev) = self.find_prev() {
+            self.selected = Some(prev);
+        }
+    }
+
+    fn find_next(&self) -> Option<NodePath> {
+        let current = self.selected?;
+
+        match current {
+            NodePath::Database(db_idx) => {
+                let db = &self.data[db_idx];
+                if db.is_expanded && !db.children.is_empty() {
+                    match &db.children[0] {
+                        Child::Table(_) => Some(NodePath::TableInDb(db_idx, 0)),
+                        Child::Schema(_) => Some(NodePath::Schema(db_idx, 0)),
+                    }
+                } else if db_idx + 1 < self.data.len() {
+                    Some(NodePath::Database(db_idx + 1))
+                } else {
+                    None
+                }
+            }
+            NodePath::Schema(db_idx, child_idx) => {
+                if let Child::Schema(s) = &self.data[db_idx].children[child_idx] {
+                    if s.is_expanded && !s.tables.is_empty() {
+                        Some(NodePath::TableInSchema(db_idx, child_idx, 0))
+                    } else {
+                        self.next_sibling_or_parent(db_idx, child_idx)
+                    }
+                } else {
+                    None
+                }
+            }
+            NodePath::TableInDb(db_idx, child_idx) => {
+                self.next_sibling_or_parent(db_idx, child_idx)
+            }
+            NodePath::TableInSchema(db_idx, child_idx, table_idx) => {
+                if let Child::Schema(s) = &self.data[db_idx].children[child_idx] {
+                    if table_idx + 1 < s.tables.len() {
+                        Some(NodePath::TableInSchema(db_idx, child_idx, table_idx + 1))
+                    } else {
+                        self.next_sibling_or_parent(db_idx, child_idx)
+                    }
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn next_sibling_or_parent(&self, db_idx: usize, child_idx: usize) -> Option<NodePath> {
+        let db = &self.data[db_idx];
+        if child_idx + 1 < db.children.len() {
+            match &db.children[child_idx + 1] {
+                Child::Table(_) => Some(NodePath::TableInDb(db_idx, child_idx + 1)),
+                Child::Schema(_) => Some(NodePath::Schema(db_idx, child_idx + 1)),
+            }
+        } else if db_idx + 1 < self.data.len() {
+            Some(NodePath::Database(db_idx + 1))
+        } else {
+            None
+        }
+    }
+
+    fn find_prev(&self) -> Option<NodePath> {
+        let current = self.selected?;
+
+        match current {
+            NodePath::Database(db_idx) => {
+                if db_idx == 0 {
+                    None
+                } else {
+                    Some(self.last_visible_in_db(db_idx - 1))
+                }
+            }
+            NodePath::Schema(db_idx, child_idx) | NodePath::TableInDb(db_idx, child_idx) => {
+                if child_idx == 0 {
+                    Some(NodePath::Database(db_idx))
+                } else {
+                    Some(self.last_visible_in_child(db_idx, child_idx - 1))
+                }
+            }
+            NodePath::TableInSchema(db_idx, child_idx, table_idx) => {
+                if table_idx == 0 {
+                    Some(NodePath::Schema(db_idx, child_idx))
+                } else {
+                    Some(NodePath::TableInSchema(db_idx, child_idx, table_idx - 1))
+                }
+            }
+        }
+    }
+
+    fn last_visible_in_db(&self, db_idx: usize) -> NodePath {
+        let db = &self.data[db_idx];
+        if db.is_expanded && !db.children.is_empty() {
+            self.last_visible_in_child(db_idx, db.children.len() - 1)
+        } else {
+            NodePath::Database(db_idx)
+        }
+    }
+
+    fn last_visible_in_child(&self, db_idx: usize, child_idx: usize) -> NodePath {
+        match &self.data[db_idx].children[child_idx] {
+            Child::Table(_) => NodePath::TableInDb(db_idx, child_idx),
+            Child::Schema(s) => {
+                if s.is_expanded && !s.tables.is_empty() {
+                    NodePath::TableInSchema(db_idx, child_idx, s.tables.len() - 1)
+                } else {
+                    NodePath::Schema(db_idx, child_idx)
+                }
+            }
+        }
+    }
+
+    pub fn get_selected(&self) -> Option<SelectedRef> {
+        match self.selected? {
+            NodePath::Database(db_idx) => {
+                Some(SelectedRef::Database(&self.data[db_idx].name))
+            }
+            NodePath::Schema(db_idx, child_idx) => {
+                if let Child::Schema(s) = &self.data[db_idx].children[child_idx] {
+                    Some(SelectedRef::Schema {
+                        database: &self.data[db_idx].name,
+                        schema: &s.name,
+                    })
+                } else {
+                    None
+                }
+            }
+            NodePath::TableInDb(db_idx, child_idx) => {
+                if let Child::Table(t) = &self.data[db_idx].children[child_idx] {
+                    Some(SelectedRef::Table {
+                        database: &self.data[db_idx].name,
+                        schema: None,
+                        table: &t.name,
+                    })
+                } else {
+                    None
+                }
+            }
+            NodePath::TableInSchema(db_idx, child_idx, table_idx) => {
+                if let Child::Schema(s) = &self.data[db_idx].children[child_idx] {
+                    Some(SelectedRef::Table {
+                        database: &self.data[db_idx].name,
+                        schema: Some(&s.name),
+                        table: &s.tables[table_idx].name,
+                    })
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    pub fn toggle_expand_selected(&mut self) {
+        match self.selected {
+            Some(NodePath::Database(db_idx)) => {
+                let db = &mut self.data[db_idx];
+                if db.has_children() {
+                    db.toggle_expand();
+                }
+            }
+            Some(NodePath::Schema(db_idx, child_idx)) => {
+                if let Child::Schema(s) = &mut self.data[db_idx].children[child_idx] {
+                    if s.has_children() {
+                        s.toggle_expand();
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn expand_selected(&mut self) {
+        match self.selected {
+            Some(NodePath::Database(db_idx)) => {
+                let db = &mut self.data[db_idx];
+                if db.has_children() && !db.is_expanded {
+                    db.expand();
+                }
+            }
+            Some(NodePath::Schema(db_idx, child_idx)) => {
+                if let Child::Schema(s) = &mut self.data[db_idx].children[child_idx] {
+                    if s.has_children() && !s.is_expanded {
+                        s.expand();
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn fold_selected(&mut self) {
+        match self.selected {
+            Some(NodePath::Database(db_idx)) => {
+                self.data[db_idx].fold();
+            }
+            Some(NodePath::Schema(db_idx, child_idx)) => {
+                if let Child::Schema(s) = &mut self.data[db_idx].children[child_idx] {
+                    s.fold();
+                }
+            }
+            Some(NodePath::TableInDb(db_idx, _)) => {
+                // Table selected: fold parent database and select it
+                self.data[db_idx].fold();
+                self.selected = Some(NodePath::Database(db_idx));
+            }
+            Some(NodePath::TableInSchema(db_idx, child_idx, _)) => {
+                // Table in schema: fold schema and select it
+                if let Child::Schema(s) = &mut self.data[db_idx].children[child_idx] {
+                    s.fold();
+                }
+                self.selected = Some(NodePath::Schema(db_idx, child_idx));
+            }
+            None => {}
+        }
+    }
+
+    /// Build list items and return (items, selected_index)
+    pub fn build_list_items(&self) -> (Vec<(String, usize)>, Option<usize>) {
+        let mut items = Vec::new();
+        let mut selected_index = None;
+        let mut index = 0;
+
+        for (db_idx, db) in self.data.iter().enumerate() {
+            let prefix = if db.is_expanded {
+                "▼ 📁"
+            } else if db.has_children() {
+                "▶ 📁"
+            } else {
+                "  📁"
+            };
+            items.push((format!("{} {}", prefix, db.name), 0));
+            if self.selected == Some(NodePath::Database(db_idx)) {
+                selected_index = Some(index);
+            }
+            index += 1;
+
+            if db.is_expanded {
+                for (child_idx, child) in db.children.iter().enumerate() {
+                    match child {
+                        Child::Table(t) => {
+                            items.push((format!("    📄 {}", t.name), 1));
+                            if self.selected == Some(NodePath::TableInDb(db_idx, child_idx)) {
+                                selected_index = Some(index);
+                            }
+                            index += 1;
+                        }
+                        Child::Schema(s) => {
+                            let prefix = if s.is_expanded {
+                                "▼ 📂"
+                            } else if s.has_children() {
+                                "▶ 📂"
+                            } else {
+                                "  📂"
+                            };
+                            items.push((format!("  {} {}", prefix, s.name), 1));
+                            if self.selected == Some(NodePath::Schema(db_idx, child_idx)) {
+                                selected_index = Some(index);
+                            }
+                            index += 1;
+
+                            if s.is_expanded {
+                                for (table_idx, t) in s.tables.iter().enumerate() {
+                                    items.push((format!("      📄 {}", t.name), 2));
+                                    if self.selected == Some(NodePath::TableInSchema(db_idx, child_idx, table_idx)) {
+                                        selected_index = Some(index);
+                                    }
+                                    index += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        (items, selected_index)
+    }
+}
+
+pub enum SelectedRef<'a> {
+    Database(&'a str),
+    Schema { database: &'a str, schema: &'a str },
+    Table { database: &'a str, schema: Option<&'a str>, table: &'a str },
+}
+
 pub enum DBListMsg {
     LeaveDashboard,
     MoveUp,
@@ -121,33 +453,8 @@ pub enum Focus {
     Filter,
 }
 
-#[derive(Debug, Clone)]
-pub struct FlatNode {
-    pub name: String,
-    pub level: usize,
-    pub node_type: FlatNodeType,
-    pub is_expanded: bool,
-    pub has_children: bool,
-}
-
-#[derive(Debug, Clone)]
-pub enum FlatNodeType {
-    Database(String),
-    Schema {
-        database: String,
-        schema: String,
-    },
-    Table {
-        database: String,
-        table: String,
-        #[allow(dead_code)]
-        schema: Option<String>,
-    },
-}
-
 pub struct DBListComponent {
-    databases: Vec<Database>,
-    selected: usize,
+    databases: Databases,
     focus: Focus,
     filter_query: String,
 }
@@ -155,250 +462,9 @@ pub struct DBListComponent {
 impl DBListComponent {
     pub fn new() -> Self {
         Self {
-            databases: vec![],
-            selected: 0,
+            databases: Databases::default(),
             focus: Focus::Tree,
             filter_query: String::new(),
-        }
-    }
-
-    fn move_up(&mut self) {
-        let len = self.flat_nodes().len();
-        if len > 0 {
-            self.selected = self.selected.saturating_sub(1);
-        }
-    }
-
-    fn move_down(&mut self) {
-        let len = self.flat_nodes().len();
-        if len > 0 {
-            self.selected = (self.selected + 1).min(len - 1);
-        }
-    }
-
-    fn move_top(&mut self) {
-        if !self.flat_nodes().is_empty() {
-            self.selected = 0;
-        }
-    }
-
-    fn move_bottom(&mut self) {
-        let len = self.flat_nodes().len();
-        if len > 0 {
-            self.selected = len - 1;
-        }
-    }
-
-    fn flat_nodes(&self) -> Vec<FlatNode> {
-        let mut nodes = Vec::new();
-        for database in &self.databases {
-            Self::flatten_database(database, &mut nodes);
-        }
-
-        // Apply filter if query is not empty
-        if !self.filter_query.is_empty() {
-            let filter_lower = self.filter_query.to_lowercase();
-            nodes.retain(|node| node.name.to_lowercase().contains(&filter_lower));
-        }
-
-        nodes
-    }
-
-    fn flatten_database(database: &Database, flat_nodes: &mut Vec<FlatNode>) {
-        let has_children = !database.children.is_empty();
-
-        flat_nodes.push(FlatNode {
-            name: database.name.clone(),
-            level: 0,
-            node_type: FlatNodeType::Database(database.name.clone()),
-            is_expanded: database.is_expanded,
-            has_children,
-        });
-
-        if database.is_expanded {
-            for child in &database.children {
-                match child {
-                    Child::Table(table) => {
-                        flat_nodes.push(FlatNode {
-                            name: table.name.clone(),
-                            level: 1,
-                            node_type: FlatNodeType::Table {
-                                database: database.name.clone(),
-                                table: table.name.clone(),
-                                schema: table.schema.clone(),
-                            },
-                            is_expanded: false,
-                            has_children: false,
-                        });
-                    }
-                    Child::Schema(schema) => {
-                        let has_schema_children = !schema.tables.is_empty();
-
-                        flat_nodes.push(FlatNode {
-                            name: schema.name.clone(),
-                            level: 1,
-                            node_type: FlatNodeType::Schema {
-                                database: database.name.clone(),
-                                schema: schema.name.clone(),
-                            },
-                            is_expanded: schema.is_expanded,
-                            has_children: has_schema_children,
-                        });
-
-                        if schema.is_expanded {
-                            for table in &schema.tables {
-                                flat_nodes.push(FlatNode {
-                                    name: table.name.clone(),
-                                    level: 2,
-                                    node_type: FlatNodeType::Table {
-                                        database: database.name.clone(),
-                                        table: table.name.clone(),
-                                        schema: Some(schema.name.clone()),
-                                    },
-                                    is_expanded: false,
-                                    has_children: false,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fn toggle_expand(&mut self) {
-        let nodes = self.flat_nodes();
-        let Some(node) = nodes.get(self.selected) else {
-            return;
-        };
-        if !node.has_children {
-            return;
-        }
-
-        match &node.node_type {
-            FlatNodeType::Database(db_name) => {
-                if let Some(db) = self.find_database_mut(db_name) {
-                    db.toggle_expand();
-                }
-            }
-            FlatNodeType::Schema { database, schema } => {
-                if let Some(s) = self.find_schema_mut(database, schema) {
-                    s.toggle_expand();
-                }
-            }
-            FlatNodeType::Table { .. } => {}
-        }
-    }
-
-    fn expand(&mut self) {
-        let nodes = self.flat_nodes();
-        let Some(node) = nodes.get(self.selected) else {
-            return;
-        };
-        if !node.has_children || node.is_expanded {
-            return;
-        }
-
-        match &node.node_type {
-            FlatNodeType::Database(db_name) => {
-                if let Some(db) = self.find_database_mut(db_name) {
-                    db.expand();
-                }
-            }
-            FlatNodeType::Schema { database, schema } => {
-                if let Some(s) = self.find_schema_mut(database, schema) {
-                    s.expand();
-                }
-            }
-            FlatNodeType::Table { .. } => {}
-        }
-    }
-
-    fn fold(&mut self) {
-        let nodes = self.flat_nodes();
-        let Some(node) = nodes.get(self.selected).cloned() else {
-            return;
-        };
-
-        match &node.node_type {
-            FlatNodeType::Database(db_name) => {
-                if node.is_expanded {
-                    if let Some(db) = self.find_database_mut(db_name) {
-                        db.fold();
-                    }
-                }
-            }
-            FlatNodeType::Schema { database, schema } => {
-                if node.is_expanded {
-                    if let Some(s) = self.find_schema_mut(database, schema) {
-                        s.fold();
-                    }
-                }
-            }
-            FlatNodeType::Table { database, schema, .. } => {
-                // Fold parent and move cursor to it
-                if let Some(schema_name) = schema {
-                    if let Some(s) = self.find_schema_mut(database, schema_name) {
-                        s.fold();
-                    }
-                    self.select_schema(database, schema_name);
-                } else {
-                    if let Some(db) = self.find_database_mut(database) {
-                        db.fold();
-                    }
-                    self.select_database(database);
-                }
-            }
-        }
-    }
-
-    fn find_database_mut(&mut self, name: &str) -> Option<&mut Database> {
-        self.databases.iter_mut().find(|d| d.name == name)
-    }
-
-    fn find_schema_mut(&mut self, database: &str, schema: &str) -> Option<&mut Schema> {
-        self.find_database_mut(database).and_then(|db| {
-            db.children.iter_mut().find_map(|child| {
-                if let Child::Schema(s) = child {
-                    if s.name == schema {
-                        return Some(s);
-                    }
-                }
-                None
-            })
-        })
-    }
-
-    fn select_database(&mut self, db_name: &str) {
-        for (i, node) in self.flat_nodes().iter().enumerate() {
-            if let FlatNodeType::Database(name) = &node.node_type {
-                if name == db_name {
-                    self.selected = i;
-                    return;
-                }
-            }
-        }
-    }
-
-    fn select_schema(&mut self, db_name: &str, schema_name: &str) {
-        for (i, node) in self.flat_nodes().iter().enumerate() {
-            if let FlatNodeType::Schema { database, schema } = &node.node_type {
-                if database == db_name && schema == schema_name {
-                    self.selected = i;
-                    return;
-                }
-            }
-        }
-    }
-
-    fn selected_node(&self) -> Option<FlatNode> {
-        self.flat_nodes().get(self.selected).cloned()
-    }
-
-    fn clamp_selected(&mut self) {
-        let len = self.flat_nodes().len();
-        if self.selected >= len && len > 0 {
-            self.selected = len - 1;
         }
     }
 
@@ -419,11 +485,12 @@ impl DBListComponent {
             let _ = tx.send(msg);
         }
     }
+
     fn on_loaded(&mut self, dbs: Vec<Database>) -> Update<DBListMsg> {
-        self.databases = dbs;
-        self.selected = 0;
+        self.databases = Databases::new(dbs);
         self.filter_query.clear();
         self.focus = Focus::Tree;
+        self.databases.select_first();
         Update::none()
     }
 
@@ -435,14 +502,40 @@ impl DBListComponent {
         self.focus = Focus::Tree;
     }
 
-    fn push_filter_char(&mut self, c: char) {
-        self.filter_query.push(c);
-        self.clamp_selected();
+    fn push_filter_char(&mut self, _c: char) {
+        // TODO: Filter support with new structure
     }
 
     fn pop_filter_char(&mut self) {
-        self.filter_query.pop();
-        self.clamp_selected();
+        // TODO: Filter support with new structure
+    }
+
+    fn move_up(&mut self) {
+        self.databases.select_prev();
+    }
+
+    fn move_down(&mut self) {
+        self.databases.select_next();
+    }
+
+    fn move_top(&mut self) {
+        self.databases.select_first();
+    }
+
+    fn move_bottom(&mut self) {
+        self.databases.select_last();
+    }
+
+    fn expand(&mut self) {
+        self.databases.expand_selected();
+    }
+
+    fn fold(&mut self) {
+        self.databases.fold_selected();
+    }
+
+    fn toggle_expand(&mut self) {
+        self.databases.toggle_expand_selected();
     }
 }
 
@@ -486,15 +579,13 @@ impl Component for DBListComponent {
                 Char('g') => DBListMsg::MoveTop.into(),
                 Char('G') => DBListMsg::MoveBottom.into(),
                 Right | Char('l') => {
-                    let Some(node) = self.selected_node() else {
-                        return Update::none();
-                    };
-                    match &node.node_type {
-                        FlatNodeType::Table { database, table, .. } => DBListMsg::SelectTable {
-                            database: database.clone(),
-                            table: table.clone(),
+                    match self.databases.get_selected() {
+                        Some(SelectedRef::Table { database, table, .. }) => DBListMsg::SelectTable {
+                            database: database.to_string(),
+                            table: table.to_string(),
                         },
-                        _ => DBListMsg::Expand,
+                        Some(SelectedRef::Database(_)) | Some(SelectedRef::Schema { .. }) => DBListMsg::Expand,
+                        None => return Update::none(),
                     }
                     .into()
                 }
@@ -502,19 +593,13 @@ impl Component for DBListComponent {
                 Char('/') => DBListMsg::Filter.into(),
                 Esc => DBListMsg::LeaveDashboard.into(),
                 Enter | Tab => {
-                    let Some(node) = self.selected_node() else {
-                        return Update::none();
-                    };
-                    match &node.node_type {
-                        FlatNodeType::Table {
-                            database, table, ..
-                        } => DBListMsg::SelectTable {
-                            database: database.clone(),
-                            table: table.clone(),
+                    match self.databases.get_selected() {
+                        Some(SelectedRef::Table { database, table, .. }) => DBListMsg::SelectTable {
+                            database: database.to_string(),
+                            table: table.to_string(),
                         },
-                        // Expand/collapse on Enter for databases and schemas
-                        FlatNodeType::Database(_) => DBListMsg::ToggleExpand,
-                        FlatNodeType::Schema { .. } => DBListMsg::ToggleExpand,
+                        Some(SelectedRef::Database(_)) | Some(SelectedRef::Schema { .. }) => DBListMsg::ToggleExpand,
+                        None => return Update::none(),
                     }
                     .into()
                 }
@@ -535,42 +620,17 @@ impl Component for DBListComponent {
             .constraints([Constraint::Min(0), Constraint::Length(3)])
             .split(area);
 
-        // Draw tree
         let tree_area = chunks[0];
         let filter_area = chunks[1];
 
-        // Tree view
-        let flat_nodes = self.flat_nodes();
-        let items: Vec<ListItem> = if flat_nodes.is_empty() {
+        // Build list items
+        let (list_items, selected_index) = self.databases.build_list_items();
+        let items: Vec<ListItem> = if list_items.is_empty() {
             vec![ListItem::new("(no database structure)")]
         } else {
-            flat_nodes
-                .iter()
-                .map(|node| {
-                    let indent = "  ".repeat(node.level);
-                    let prefix = match &node.node_type {
-                        FlatNodeType::Database(_) => {
-                            if node.is_expanded {
-                                "▼ 📁"
-                            } else if node.has_children {
-                                "▶ 📁"
-                            } else {
-                                "  📁"
-                            }
-                        }
-                        FlatNodeType::Schema { .. } => {
-                            if node.is_expanded {
-                                "▼ 📂"
-                            } else if node.has_children {
-                                "▶ 📂"
-                            } else {
-                                "  📂"
-                            }
-                        }
-                        FlatNodeType::Table { .. } => "  📄",
-                    };
-                    ListItem::new(Span::raw(format!("{}{} {}", indent, prefix, node.name)))
-                })
+            list_items
+                .into_iter()
+                .map(|(text, _)| ListItem::new(Span::raw(text)))
                 .collect()
         };
 
@@ -595,9 +655,7 @@ impl Component for DBListComponent {
             .highlight_symbol("▶ ");
 
         let mut state = ListState::default();
-        if !flat_nodes.is_empty() {
-            state.select(Some(self.selected));
-        }
+        state.select(selected_index);
 
         f.render_stateful_widget(list, tree_area, &mut state);
 
