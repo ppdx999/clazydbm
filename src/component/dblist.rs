@@ -109,6 +109,7 @@ enum NodePath {
 pub struct Databases {
     data: Vec<Database>,
     selected: Option<NodePath>,
+    filter: String,
 }
 
 impl Databases {
@@ -116,40 +117,122 @@ impl Databases {
         Self {
             data: databases,
             selected: None,
+            filter: String::new(),
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+    // Filter methods
+    pub fn filter(&self) -> &str {
+        &self.filter
+    }
+
+    pub fn push_filter_char(&mut self, c: char) {
+        self.filter.push(c);
+    }
+
+    pub fn pop_filter_char(&mut self) {
+        self.filter.pop();
+    }
+
+    pub fn clear_filter(&mut self) {
+        self.filter.clear();
+    }
+
+    fn filter_lower(&self) -> String {
+        self.filter.to_lowercase()
+    }
+
+    fn node_matches_filter(&self, path: NodePath) -> bool {
+        if self.filter.is_empty() {
+            return true;
+        }
+        let filter = self.filter_lower();
+        match path {
+            NodePath::Database(db_idx) => self.db_matches_filter(&self.data[db_idx], &filter),
+            NodePath::Schema(db_idx, child_idx) => {
+                if let Child::Schema(s) = &self.data[db_idx].children[child_idx] {
+                    self.schema_matches_filter(s, &filter)
+                } else {
+                    false
+                }
+            }
+            NodePath::TableInDb(db_idx, child_idx) => {
+                if let Child::Table(t) = &self.data[db_idx].children[child_idx] {
+                    t.name.to_lowercase().contains(&filter)
+                } else {
+                    false
+                }
+            }
+            NodePath::TableInSchema(db_idx, child_idx, table_idx) => {
+                if let Child::Schema(s) = &self.data[db_idx].children[child_idx] {
+                    s.tables[table_idx].name.to_lowercase().contains(&filter)
+                } else {
+                    false
+                }
+            }
+        }
     }
 
     pub fn select_first(&mut self) {
-        if !self.data.is_empty() {
-            self.selected = Some(NodePath::Database(0));
+        // Find first visible (filtered) database
+        for db_idx in 0..self.data.len() {
+            let path = NodePath::Database(db_idx);
+            if self.node_matches_filter(path) {
+                self.selected = Some(path);
+                return;
+            }
         }
+        self.selected = None;
     }
 
     pub fn select_last(&mut self) {
-        if let Some(db_idx) = self.data.len().checked_sub(1) {
-            self.selected = Some(self.last_visible_in_db(db_idx));
+        // Find last visible node
+        for db_idx in (0..self.data.len()).rev() {
+            if self.node_matches_filter(NodePath::Database(db_idx)) {
+                self.selected = Some(self.last_visible_in_db_filtered(db_idx));
+                return;
+            }
         }
+        self.selected = None;
     }
 
     pub fn select_next(&mut self) {
-        if let Some(next) = self.find_next() {
+        if let Some(next) = self.find_next_filtered() {
             self.selected = Some(next);
         }
     }
 
     pub fn select_prev(&mut self) {
-        if let Some(prev) = self.find_prev() {
+        if let Some(prev) = self.find_prev_filtered() {
             self.selected = Some(prev);
         }
     }
 
-    fn find_next(&self) -> Option<NodePath> {
-        let current = self.selected?;
+    fn find_next_filtered(&self) -> Option<NodePath> {
+        let mut current = self.selected?;
 
+        loop {
+            let next = self.find_next_raw(current)?;
+            if self.node_matches_filter(next) {
+                return Some(next);
+            }
+            current = next;
+        }
+    }
+
+    fn find_prev_filtered(&self) -> Option<NodePath> {
+        let mut current = self.selected?;
+
+        loop {
+            let prev = self.find_prev_raw(current)?;
+            if self.node_matches_filter(prev) {
+                return Some(prev);
+            }
+            current = prev;
+        }
+    }
+
+    fn find_next_raw(&self, current: NodePath) -> Option<NodePath> {
         match current {
             NodePath::Database(db_idx) => {
                 let db = &self.data[db_idx];
@@ -206,9 +289,7 @@ impl Databases {
         }
     }
 
-    fn find_prev(&self) -> Option<NodePath> {
-        let current = self.selected?;
-
+    fn find_prev_raw(&self, current: NodePath) -> Option<NodePath> {
         match current {
             NodePath::Database(db_idx) => {
                 if db_idx == 0 {
@@ -243,6 +324,23 @@ impl Databases {
         }
     }
 
+    fn last_visible_in_db_filtered(&self, db_idx: usize) -> NodePath {
+        let db = &self.data[db_idx];
+        if db.is_expanded && !db.children.is_empty() {
+            // Find last matching child
+            for child_idx in (0..db.children.len()).rev() {
+                let path = match &db.children[child_idx] {
+                    Child::Table(_) => NodePath::TableInDb(db_idx, child_idx),
+                    Child::Schema(_) => NodePath::Schema(db_idx, child_idx),
+                };
+                if self.node_matches_filter(path) {
+                    return self.last_visible_in_child_filtered(db_idx, child_idx);
+                }
+            }
+        }
+        NodePath::Database(db_idx)
+    }
+
     fn last_visible_in_child(&self, db_idx: usize, child_idx: usize) -> NodePath {
         match &self.data[db_idx].children[child_idx] {
             Child::Table(_) => NodePath::TableInDb(db_idx, child_idx),
@@ -252,6 +350,23 @@ impl Databases {
                 } else {
                     NodePath::Schema(db_idx, child_idx)
                 }
+            }
+        }
+    }
+
+    fn last_visible_in_child_filtered(&self, db_idx: usize, child_idx: usize) -> NodePath {
+        match &self.data[db_idx].children[child_idx] {
+            Child::Table(_) => NodePath::TableInDb(db_idx, child_idx),
+            Child::Schema(s) => {
+                if s.is_expanded && !s.tables.is_empty() {
+                    let filter = self.filter_lower();
+                    for table_idx in (0..s.tables.len()).rev() {
+                        if self.filter.is_empty() || s.tables[table_idx].name.to_lowercase().contains(&filter) {
+                            return NodePath::TableInSchema(db_idx, child_idx, table_idx);
+                        }
+                    }
+                }
+                NodePath::Schema(db_idx, child_idx)
             }
         }
     }
@@ -360,13 +475,20 @@ impl Databases {
         }
     }
 
-    /// Build list items and return (items, selected_index)
+    /// Build list items with filter applied, return (items, selected_index)
     pub fn build_list_items(&self) -> (Vec<(String, usize)>, Option<usize>) {
         let mut items = Vec::new();
         let mut selected_index = None;
         let mut index = 0;
+        let filter_lower = self.filter_lower();
 
         for (db_idx, db) in self.data.iter().enumerate() {
+            // Check if database or any children match filter
+            let db_matches = self.filter.is_empty() || self.db_matches_filter(db, &filter_lower);
+            if !db_matches {
+                continue;
+            }
+
             let prefix = if db.is_expanded {
                 "▼ 📁"
             } else if db.has_children() {
@@ -384,6 +506,9 @@ impl Databases {
                 for (child_idx, child) in db.children.iter().enumerate() {
                     match child {
                         Child::Table(t) => {
+                            if !self.filter.is_empty() && !t.name.to_lowercase().contains(&filter_lower) {
+                                continue;
+                            }
                             items.push((format!("    📄 {}", t.name), 1));
                             if self.selected == Some(NodePath::TableInDb(db_idx, child_idx)) {
                                 selected_index = Some(index);
@@ -391,6 +516,11 @@ impl Databases {
                             index += 1;
                         }
                         Child::Schema(s) => {
+                            let schema_matches = self.filter.is_empty() || self.schema_matches_filter(s, &filter_lower);
+                            if !schema_matches {
+                                continue;
+                            }
+
                             let prefix = if s.is_expanded {
                                 "▼ 📂"
                             } else if s.has_children() {
@@ -406,6 +536,9 @@ impl Databases {
 
                             if s.is_expanded {
                                 for (table_idx, t) in s.tables.iter().enumerate() {
+                                    if !self.filter.is_empty() && !t.name.to_lowercase().contains(&filter_lower) {
+                                        continue;
+                                    }
                                     items.push((format!("      📄 {}", t.name), 2));
                                     if self.selected == Some(NodePath::TableInSchema(db_idx, child_idx, table_idx)) {
                                         selected_index = Some(index);
@@ -420,6 +553,27 @@ impl Databases {
         }
 
         (items, selected_index)
+    }
+
+    fn db_matches_filter(&self, db: &Database, filter: &str) -> bool {
+        if db.name.to_lowercase().contains(filter) {
+            return true;
+        }
+        for child in &db.children {
+            match child {
+                Child::Table(t) if t.name.to_lowercase().contains(filter) => return true,
+                Child::Schema(s) if self.schema_matches_filter(s, filter) => return true,
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn schema_matches_filter(&self, schema: &Schema, filter: &str) -> bool {
+        if schema.name.to_lowercase().contains(filter) {
+            return true;
+        }
+        schema.tables.iter().any(|t| t.name.to_lowercase().contains(filter))
     }
 }
 
@@ -456,7 +610,6 @@ pub enum Focus {
 pub struct DBListComponent {
     databases: Databases,
     focus: Focus,
-    filter_query: String,
 }
 
 impl DBListComponent {
@@ -464,7 +617,6 @@ impl DBListComponent {
         Self {
             databases: Databases::default(),
             focus: Focus::Tree,
-            filter_query: String::new(),
         }
     }
 
@@ -488,7 +640,6 @@ impl DBListComponent {
 
     fn on_loaded(&mut self, dbs: Vec<Database>) -> Update<DBListMsg> {
         self.databases = Databases::new(dbs);
-        self.filter_query.clear();
         self.focus = Focus::Tree;
         self.databases.select_first();
         Update::none()
@@ -502,12 +653,12 @@ impl DBListComponent {
         self.focus = Focus::Tree;
     }
 
-    fn push_filter_char(&mut self, _c: char) {
-        // TODO: Filter support with new structure
+    fn push_filter_char(&mut self, c: char) {
+        self.databases.push_filter_char(c);
     }
 
     fn pop_filter_char(&mut self) {
-        // TODO: Filter support with new structure
+        self.databases.pop_filter_char();
     }
 
     fn move_up(&mut self) {
@@ -672,9 +823,9 @@ impl Component for DBListComponent {
             .border_style(filter_style);
 
         let filter_text = if matches!(self.focus, Focus::Filter) {
-            format!("{}_", self.filter_query)
+            format!("{}_", self.databases.filter())
         } else {
-            self.filter_query.clone()
+            self.databases.filter().to_string()
         };
 
         let filter_paragraph = ratatui::widgets::Paragraph::new(filter_text).block(filter_block);
