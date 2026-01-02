@@ -361,7 +361,7 @@ impl Component for DBListComponent {
                 Left | Char('h') => DBListMsg::Fold.into(),
                 Char('/') => DBListMsg::Filter.into(),
                 Esc => DBListMsg::LeaveDashboard.into(),
-                Enter => {
+                Enter | Tab => {
                     let Some(node) = self.selected_node() else {
                         return Update::none();
                     };
