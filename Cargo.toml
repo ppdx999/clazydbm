@@ -1,6 +1,6 @@
 [package]
 name = "clazydbm"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["fujis"]
 description = "A modern Terminal User Interface (TUI) database management tool for PostgreSQL, MySQL, and SQLite"
