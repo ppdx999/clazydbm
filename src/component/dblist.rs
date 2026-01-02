@@ -47,6 +47,22 @@ impl Database {
             is_expanded: false,
         }
     }
+
+    pub fn expand(&mut self) {
+        self.is_expanded = true;
+    }
+
+    pub fn fold(&mut self) {
+        self.is_expanded = false;
+    }
+
+    pub fn toggle_expand(&mut self) {
+        self.is_expanded = !self.is_expanded;
+    }
+
+    pub fn has_children(&self) -> bool {
+        !self.children.is_empty()
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -54,6 +70,24 @@ pub struct Schema {
     pub name: String,
     pub tables: Vec<Table>,
     pub is_expanded: bool,
+}
+
+impl Schema {
+    pub fn expand(&mut self) {
+        self.is_expanded = true;
+    }
+
+    pub fn fold(&mut self) {
+        self.is_expanded = false;
+    }
+
+    pub fn toggle_expand(&mut self) {
+        self.is_expanded = !self.is_expanded;
+    }
+
+    pub fn has_children(&self) -> bool {
+        !self.tables.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -243,20 +277,13 @@ impl DBListComponent {
 
         match &node.node_type {
             FlatNodeType::Database(db_name) => {
-                if let Some(db) = self.databases.iter_mut().find(|d| &d.name == db_name) {
-                    db.is_expanded = !db.is_expanded;
+                if let Some(db) = self.find_database_mut(db_name) {
+                    db.toggle_expand();
                 }
             }
             FlatNodeType::Schema { database, schema } => {
-                if let Some(db) = self.databases.iter_mut().find(|d| &d.name == database) {
-                    for child in &mut db.children {
-                        if let Child::Schema(s) = child {
-                            if &s.name == schema {
-                                s.is_expanded = !s.is_expanded;
-                                break;
-                            }
-                        }
-                    }
+                if let Some(s) = self.find_schema_mut(database, schema) {
+                    s.toggle_expand();
                 }
             }
             FlatNodeType::Table { .. } => {}
@@ -274,20 +301,13 @@ impl DBListComponent {
 
         match &node.node_type {
             FlatNodeType::Database(db_name) => {
-                if let Some(db) = self.databases.iter_mut().find(|d| &d.name == db_name) {
-                    db.is_expanded = true;
+                if let Some(db) = self.find_database_mut(db_name) {
+                    db.expand();
                 }
             }
             FlatNodeType::Schema { database, schema } => {
-                if let Some(db) = self.databases.iter_mut().find(|d| &d.name == database) {
-                    for child in &mut db.children {
-                        if let Child::Schema(s) = child {
-                            if &s.name == schema {
-                                s.is_expanded = true;
-                                break;
-                            }
-                        }
-                    }
+                if let Some(s) = self.find_schema_mut(database, schema) {
+                    s.expand();
                 }
             }
             FlatNodeType::Table { .. } => {}
@@ -303,49 +323,50 @@ impl DBListComponent {
         match &node.node_type {
             FlatNodeType::Database(db_name) => {
                 if node.is_expanded {
-                    if let Some(db) = self.databases.iter_mut().find(|d| &d.name == db_name) {
-                        db.is_expanded = false;
+                    if let Some(db) = self.find_database_mut(db_name) {
+                        db.fold();
                     }
                 }
             }
             FlatNodeType::Schema { database, schema } => {
                 if node.is_expanded {
-                    if let Some(db) = self.databases.iter_mut().find(|d| &d.name == database) {
-                        for child in &mut db.children {
-                            if let Child::Schema(s) = child {
-                                if &s.name == schema {
-                                    s.is_expanded = false;
-                                    break;
-                                }
-                            }
-                        }
+                    if let Some(s) = self.find_schema_mut(database, schema) {
+                        s.fold();
                     }
                 }
             }
             FlatNodeType::Table { database, schema, .. } => {
                 // Fold parent and move cursor to it
                 if let Some(schema_name) = schema {
-                    // Parent is Schema
-                    if let Some(db) = self.databases.iter_mut().find(|d| &d.name == database) {
-                        for child in &mut db.children {
-                            if let Child::Schema(s) = child {
-                                if &s.name == schema_name {
-                                    s.is_expanded = false;
-                                    break;
-                                }
-                            }
-                        }
+                    if let Some(s) = self.find_schema_mut(database, schema_name) {
+                        s.fold();
                     }
                     self.select_schema(database, schema_name);
                 } else {
-                    // Parent is Database
-                    if let Some(db) = self.databases.iter_mut().find(|d| &d.name == database) {
-                        db.is_expanded = false;
+                    if let Some(db) = self.find_database_mut(database) {
+                        db.fold();
                     }
                     self.select_database(database);
                 }
             }
         }
+    }
+
+    fn find_database_mut(&mut self, name: &str) -> Option<&mut Database> {
+        self.databases.iter_mut().find(|d| d.name == name)
+    }
+
+    fn find_schema_mut(&mut self, database: &str, schema: &str) -> Option<&mut Schema> {
+        self.find_database_mut(database).and_then(|db| {
+            db.children.iter_mut().find_map(|child| {
+                if let Child::Schema(s) = child {
+                    if s.name == schema {
+                        return Some(s);
+                    }
+                }
+                None
+            })
+        })
     }
 
     fn select_database(&mut self, db_name: &str) {
