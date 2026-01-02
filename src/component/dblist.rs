@@ -18,6 +18,7 @@ use crate::{connection::Connection, db};
 pub struct Database {
     pub name: String,
     pub children: Vec<Child>,
+    pub is_expanded: bool,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -43,6 +44,7 @@ impl Database {
         Self {
             name: database,
             children,
+            is_expanded: false,
         }
     }
 }
@@ -51,6 +53,7 @@ impl Database {
 pub struct Schema {
     pub name: String,
     pub tables: Vec<Table>,
+    pub is_expanded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -110,83 +113,75 @@ pub enum FlatNodeType {
 
 pub struct DBListComponent {
     databases: Vec<Database>,
-    flat_nodes: Vec<FlatNode>,
     selected: usize,
     focus: Focus,
     filter_query: String,
-    expanded_databases: std::collections::HashSet<String>,
-    expanded_schemas: std::collections::HashSet<(String, String)>, // (database, schema)
 }
 
 impl DBListComponent {
     pub fn new() -> Self {
-        let mut component = Self {
+        Self {
             databases: vec![],
-            flat_nodes: vec![],
             selected: 0,
             focus: Focus::Tree,
             filter_query: String::new(),
-            expanded_databases: std::collections::HashSet::new(),
-            expanded_schemas: std::collections::HashSet::new(),
-        };
-        component.rebuild_flat_list();
-        component
+        }
     }
 
     fn move_up(&mut self) {
-        if !self.flat_nodes.is_empty() {
+        let len = self.flat_nodes().len();
+        if len > 0 {
             self.selected = self.selected.saturating_sub(1);
         }
     }
+
     fn move_down(&mut self) {
-        if !self.flat_nodes.is_empty() {
-            self.selected = (self.selected + 1).min(self.flat_nodes.len() - 1);
-        }
-    }
-    fn move_top(&mut self) {
-        if !self.flat_nodes.is_empty() {
-            self.selected = 0;
-        }
-    }
-    fn move_bottom(&mut self) {
-        if !self.flat_nodes.is_empty() {
-            self.selected = self.flat_nodes.len() - 1;
+        let len = self.flat_nodes().len();
+        if len > 0 {
+            self.selected = (self.selected + 1).min(len - 1);
         }
     }
 
-    fn rebuild_flat_list(&mut self) {
-        let mut flat_nodes = Vec::new();
+    fn move_top(&mut self) {
+        if !self.flat_nodes().is_empty() {
+            self.selected = 0;
+        }
+    }
+
+    fn move_bottom(&mut self) {
+        let len = self.flat_nodes().len();
+        if len > 0 {
+            self.selected = len - 1;
+        }
+    }
+
+    fn flat_nodes(&self) -> Vec<FlatNode> {
+        let mut nodes = Vec::new();
         for database in &self.databases {
-            self.flatten_database(database, &mut flat_nodes);
+            Self::flatten_database(database, &mut nodes);
         }
 
         // Apply filter if query is not empty
         if !self.filter_query.is_empty() {
             let filter_lower = self.filter_query.to_lowercase();
-            flat_nodes.retain(|node| node.name.to_lowercase().contains(&filter_lower));
+            nodes.retain(|node| node.name.to_lowercase().contains(&filter_lower));
         }
 
-        self.flat_nodes = flat_nodes;
-
-        // Ensure selected index is valid after filtering
-        if self.selected >= self.flat_nodes.len() && !self.flat_nodes.is_empty() {
-            self.selected = self.flat_nodes.len() - 1;
-        }
+        nodes
     }
 
-    fn flatten_database(&self, database: &Database, flat_nodes: &mut Vec<FlatNode>) {
-        let is_expanded = self.expanded_databases.contains(&database.name);
+    fn flatten_database(database: &Database, flat_nodes: &mut Vec<FlatNode>) {
         let has_children = !database.children.is_empty();
 
         flat_nodes.push(FlatNode {
             name: database.name.clone(),
             level: 0,
             node_type: FlatNodeType::Database(database.name.clone()),
-            is_expanded,
+            is_expanded: database.is_expanded,
             has_children,
         });
 
-        if is_expanded {
+        if database.is_expanded {
             for child in &database.children {
                 match child {
                     Child::Table(table) => {
@@ -203,8 +198,6 @@ impl DBListComponent {
                         });
                     }
                     Child::Schema(schema) => {
-                        let schema_key = (database.name.clone(), schema.name.clone());
-                        let is_schema_expanded = self.expanded_schemas.contains(&schema_key);
                         let has_schema_children = !schema.tables.is_empty();
 
                         flat_nodes.push(FlatNode {
@@ -214,11 +207,11 @@ impl DBListComponent {
                                 database: database.name.clone(),
                                 schema: schema.name.clone(),
                             },
-                            is_expanded: is_schema_expanded,
+                            is_expanded: schema.is_expanded,
                             has_children: has_schema_children,
                         });
 
-                        if is_schema_expanded {
+                        if schema.is_expanded {
                             for table in &schema.tables {
                                 flat_nodes.push(FlatNode {
                                     name: table.name.clone(),
@@ -240,35 +233,152 @@ impl DBListComponent {
     }
 
     fn toggle_expand(&mut self) {
-        if let Some(node) = self.flat_nodes.get(self.selected) {
-            if node.has_children {
-                match &node.node_type {
-                    FlatNodeType::Database(db_name) => {
-                        if self.expanded_databases.contains(db_name) {
-                            self.expanded_databases.remove(db_name);
-                        } else {
-                            self.expanded_databases.insert(db_name.clone());
+        let nodes = self.flat_nodes();
+        let Some(node) = nodes.get(self.selected) else {
+            return;
+        };
+        if !node.has_children {
+            return;
+        }
+
+        match &node.node_type {
+            FlatNodeType::Database(db_name) => {
+                if let Some(db) = self.databases.iter_mut().find(|d| &d.name == db_name) {
+                    db.is_expanded = !db.is_expanded;
+                }
+            }
+            FlatNodeType::Schema { database, schema } => {
+                if let Some(db) = self.databases.iter_mut().find(|d| &d.name == database) {
+                    for child in &mut db.children {
+                        if let Child::Schema(s) = child {
+                            if &s.name == schema {
+                                s.is_expanded = !s.is_expanded;
+                                break;
+                            }
                         }
-                    }
-                    FlatNodeType::Schema { database, schema } => {
-                        let schema_key = (database.clone(), schema.clone());
-                        if self.expanded_schemas.contains(&schema_key) {
-                            self.expanded_schemas.remove(&schema_key);
-                        } else {
-                            self.expanded_schemas.insert(schema_key);
-                        }
-                    }
-                    FlatNodeType::Table { .. } => {
-                        // Tables cannot be expanded
                     }
                 }
-                self.rebuild_flat_list();
+            }
+            FlatNodeType::Table { .. } => {}
+        }
+    }
+
+    fn expand(&mut self) {
+        let nodes = self.flat_nodes();
+        let Some(node) = nodes.get(self.selected) else {
+            return;
+        };
+        if !node.has_children || node.is_expanded {
+            return;
+        }
+
+        match &node.node_type {
+            FlatNodeType::Database(db_name) => {
+                if let Some(db) = self.databases.iter_mut().find(|d| &d.name == db_name) {
+                    db.is_expanded = true;
+                }
+            }
+            FlatNodeType::Schema { database, schema } => {
+                if let Some(db) = self.databases.iter_mut().find(|d| &d.name == database) {
+                    for child in &mut db.children {
+                        if let Child::Schema(s) = child {
+                            if &s.name == schema {
+                                s.is_expanded = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            FlatNodeType::Table { .. } => {}
+        }
+    }
+
+    fn fold(&mut self) {
+        let nodes = self.flat_nodes();
+        let Some(node) = nodes.get(self.selected).cloned() else {
+            return;
+        };
+
+        match &node.node_type {
+            FlatNodeType::Database(db_name) => {
+                if node.is_expanded {
+                    if let Some(db) = self.databases.iter_mut().find(|d| &d.name == db_name) {
+                        db.is_expanded = false;
+                    }
+                }
+            }
+            FlatNodeType::Schema { database, schema } => {
+                if node.is_expanded {
+                    if let Some(db) = self.databases.iter_mut().find(|d| &d.name == database) {
+                        for child in &mut db.children {
+                            if let Child::Schema(s) = child {
+                                if &s.name == schema {
+                                    s.is_expanded = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            FlatNodeType::Table { database, schema, .. } => {
+                // Fold parent and move cursor to it
+                if let Some(schema_name) = schema {
+                    // Parent is Schema
+                    if let Some(db) = self.databases.iter_mut().find(|d| &d.name == database) {
+                        for child in &mut db.children {
+                            if let Child::Schema(s) = child {
+                                if &s.name == schema_name {
+                                    s.is_expanded = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    self.select_schema(database, schema_name);
+                } else {
+                    // Parent is Database
+                    if let Some(db) = self.databases.iter_mut().find(|d| &d.name == database) {
+                        db.is_expanded = false;
+                    }
+                    self.select_database(database);
+                }
             }
         }
     }
 
-    fn selected_node(&self) -> Option<&FlatNode> {
-        self.flat_nodes.get(self.selected)
+    fn select_database(&mut self, db_name: &str) {
+        for (i, node) in self.flat_nodes().iter().enumerate() {
+            if let FlatNodeType::Database(name) = &node.node_type {
+                if name == db_name {
+                    self.selected = i;
+                    return;
+                }
+            }
+        }
+    }
+
+    fn select_schema(&mut self, db_name: &str, schema_name: &str) {
+        for (i, node) in self.flat_nodes().iter().enumerate() {
+            if let FlatNodeType::Schema { database, schema } = &node.node_type {
+                if database == db_name && schema == schema_name {
+                    self.selected = i;
+                    return;
+                }
+            }
+        }
+    }
+
+    fn selected_node(&self) -> Option<FlatNode> {
+        self.flat_nodes().get(self.selected).cloned()
+    }
+
+    fn clamp_selected(&mut self) {
+        let len = self.flat_nodes().len();
+        if self.selected >= len && len > 0 {
+            self.selected = len - 1;
+        }
     }
 
     fn on_load(conn: Connection) -> impl FnOnce(std::sync::mpsc::Sender<AppMsg>) + Send + 'static {
@@ -290,12 +400,9 @@ impl DBListComponent {
     }
     fn on_loaded(&mut self, dbs: Vec<Database>) -> Update<DBListMsg> {
         self.databases = dbs;
-        self.expanded_databases.clear();
-        self.expanded_schemas.clear();
         self.selected = 0;
         self.filter_query.clear();
         self.focus = Focus::Tree;
-        self.rebuild_flat_list();
         Update::none()
     }
 
@@ -309,11 +416,12 @@ impl DBListComponent {
 
     fn push_filter_char(&mut self, c: char) {
         self.filter_query.push(c);
-        self.rebuild_flat_list();
+        self.clamp_selected();
     }
+
     fn pop_filter_char(&mut self) {
         self.filter_query.pop();
-        self.rebuild_flat_list();
+        self.clamp_selected();
     }
 }
 
@@ -329,8 +437,8 @@ impl Component for DBListComponent {
             DBListMsg::MoveDown => self.move_down().into(),
             DBListMsg::MoveTop => self.move_top().into(),
             DBListMsg::MoveBottom => self.move_bottom().into(),
-            DBListMsg::Expand => self.toggle_expand().into(),
-            DBListMsg::Fold => self.toggle_expand().into(),
+            DBListMsg::Expand => self.expand().into(),
+            DBListMsg::Fold => self.fold().into(),
             DBListMsg::Filter => self.move_focus_to_filter().into(),
             DBListMsg::LeaveDashboard => Update::none(), // Handled by parent
             DBListMsg::ToggleExpand => self.toggle_expand().into(),
@@ -342,7 +450,6 @@ impl Component for DBListComponent {
             DBListMsg::FilterPop => self.pop_filter_char().into(),
             DBListMsg::FilterConfirm => {
                 self.move_focus_to_tree();
-                self.rebuild_flat_list();
                 Update::none()
             }
         }
@@ -357,7 +464,19 @@ impl Component for DBListComponent {
                 Down | Char('j') => DBListMsg::MoveDown.into(),
                 Char('g') => DBListMsg::MoveTop.into(),
                 Char('G') => DBListMsg::MoveBottom.into(),
-                Right | Char('l') => DBListMsg::Expand.into(),
+                Right | Char('l') => {
+                    let Some(node) = self.selected_node() else {
+                        return Update::none();
+                    };
+                    match &node.node_type {
+                        FlatNodeType::Table { database, table, .. } => DBListMsg::SelectTable {
+                            database: database.clone(),
+                            table: table.clone(),
+                        },
+                        _ => DBListMsg::Expand,
+                    }
+                    .into()
+                }
                 Left | Char('h') => DBListMsg::Fold.into(),
                 Char('/') => DBListMsg::Filter.into(),
                 Esc => DBListMsg::LeaveDashboard.into(),
@@ -400,10 +519,11 @@ impl Component for DBListComponent {
         let filter_area = chunks[1];
 
         // Tree view
-        let items: Vec<ListItem> = if self.flat_nodes.is_empty() {
+        let flat_nodes = self.flat_nodes();
+        let items: Vec<ListItem> = if flat_nodes.is_empty() {
             vec![ListItem::new("(no database structure)")]
         } else {
-            self.flat_nodes
+            flat_nodes
                 .iter()
                 .map(|node| {
                     let indent = "  ".repeat(node.level);
@@ -454,7 +574,7 @@ impl Component for DBListComponent {
             .highlight_symbol("▶ ");
 
         let mut state = ListState::default();
-        if !self.flat_nodes.is_empty() {
+        if !flat_nodes.is_empty() {
             state.select(Some(self.selected));
         }
 

@@ -81,7 +81,7 @@ impl DBBehavior for Postgres {
 
         let mut children = Vec::new();
         for (schema, tables) in by_schema {
-            children.push(Child::Schema(Schema { name: schema, tables }));
+            children.push(Child::Schema(Schema { name: schema, tables, is_expanded: false }));
         }
 
         Ok(vec![Database::new(dbname, children)])
